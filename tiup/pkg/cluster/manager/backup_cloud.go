@@ -57,6 +57,7 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	var cdcExists bool
 	var pdHost string
 	topo.IterInstance(func(instance spec.Instance) {
+		fmt.Println("instance role", instance.GetPort(), instance.Role())
 		if instance.Role() == "ticdc" {
 			cdcExists = true
 		}
