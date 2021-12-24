@@ -14,8 +14,8 @@
 package manager
 
 import (
+	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path"
@@ -74,27 +74,16 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	// TODO get uuid from service
 	uuid, _ := uuid.NewUUID()
 	c := run(cdcCtl, strings.Split(fmt.Sprintf(getChangeFeedCMD, pdHost, uuid), "")...)
-	stderr, err := c.StderrPipe()
+	var outb, errb bytes.Buffer
+	c.Stdout = &outb
+	c.Stderr = &errb
+	err = c.Run()
 	if err != nil {
-		return errors.Annotate(err, "run getChangeFeed stderr")
+		return errors.Annotate(err, "run getChangeFeed failed")
 	}
-	err = c.Start()
-	if err != nil {
-		return errors.Annotate(err, "run getChangeFeed start")
+	if !strings.Contains(outb.String(), "ErrChangeFeedNotExists") {
+		return errors.Annotate(err, "run getChangeFeed failed")
 	}
-	errCh := make(chan error)
-	go func() {
-		defer stderr.Close()
-		out, err := io.ReadAll(stderr)
-		if err != nil {
-			errCh <- errors.Annotate(err, "run getChangeFeed read")
-		}
-		if !strings.Contains(string(out), "ErrChangeFeedNotExists") {
-			errCh <- errors.Annotate(err, "run getChangeFeed failed")
-		}
-		errCh <- nil
-	}()
-	err = <-errCh
 	if err == nil {
 		// changefeed exists in cdc
 		return errors.New("backup to cloud is enabled already")
@@ -128,9 +117,6 @@ func run(name string, args ...string) *exec.Cmd {
 		args = append(xs[1:], args...)
 	}
 	cmd := exec.Command(name, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
 	return cmd
 }
 
