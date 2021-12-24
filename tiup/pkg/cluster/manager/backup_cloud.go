@@ -15,6 +15,7 @@ package manager
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path"
@@ -57,7 +58,6 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	var cdcExists bool
 	var pdHost string
 	topo.IterInstance(func(instance spec.Instance) {
-		fmt.Println("instance role", instance.GetPort(), instance.Role())
 		if instance.Role() == "cdc" {
 			cdcExists = true
 		}
@@ -74,21 +74,27 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	// TODO get uuid from service
 	uuid, _ := uuid.NewUUID()
 	c := run(cdcCtl, strings.Split(fmt.Sprintf(getChangeFeedCMD, pdHost, uuid), "")...)
-	err = c.Run()
+	stderr, err := c.StderrPipe()
 	if err != nil {
-		stderr, e := c.StderrPipe()
-		if e != nil {
-			return errors.Annotate(e, "run getChangeFeed stderr")
-		}
-		b := make([]byte, 1024)
-		_, e = stderr.Read(b)
-		if e != nil {
-			return errors.Annotate(e, "run getChangeFeed read")
-		}
-		if !strings.Contains(string(b), "ErrChangeFeedNotExists") {
-			return errors.Annotate(err, "run getChangeFeed failed")
-		}
+		return errors.Annotate(err, "run getChangeFeed stderr")
 	}
+	err = c.Start()
+	if err != nil {
+		return errors.Annotate(err, "run getChangeFeed start")
+	}
+	errCh := make(chan error)
+	go func() {
+		defer stderr.Close()
+		out, err := io.ReadAll(stderr)
+		if err != nil {
+			errCh <- errors.Annotate(err, "run getChangeFeed read")
+		}
+		if !strings.Contains(string(out), "ErrChangeFeedNotExists") {
+			errCh <- errors.Annotate(err, "run getChangeFeed failed")
+		}
+		errCh <- nil
+	}()
+	err = <-errCh
 	if err == nil {
 		// changefeed exists in cdc
 		return errors.New("backup to cloud is enabled already")
