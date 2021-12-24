@@ -29,8 +29,8 @@ import (
 )
 
 const (
-	createChangeFeedCMD = "changefeed create --pd=%s --sink-uri=\"%s\" --changefeed-id=\"%s\""
-	getChangeFeedCMD    = "changefeed query --pd=%s --changefeed-id=\"%s\""
+	createChangeFeedCMD = "changefeed create --pd=%s --sink-uri=%s --changefeed-id=%s"
+	getChangeFeedCMD    = "changefeed query --pd=%s --changefeed-id=%s"
 )
 
 // Backup2Cloud start full backup and log backup to cloud.
