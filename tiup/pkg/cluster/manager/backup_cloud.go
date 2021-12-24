@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"strings"
 
 	"github.com/google/uuid"
@@ -41,6 +42,10 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	home := os.Getenv(localdata.EnvNameComponentInstallDir)
 	if home == "" {
 		return errors.New("component `ctl` cannot run in standalone mode")
+	}
+	cdcCtl, err := binaryPath(home, "cdc")
+	if err != nil {
+		return err
 	}
 
 	metadata, _ := m.meta(name)
@@ -67,8 +72,8 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	}
 	// TODO get uuid from service
 	uuid, _ := uuid.NewUUID()
-	c := run(fmt.Sprintf(getChangeFeedCMD, pdHost, uuid))
-	err := c.Run()
+	c := run(cdcCtl, fmt.Sprintf(getChangeFeedCMD, pdHost, uuid))
+	err = c.Run()
 	if err != nil {
 		stderr, e := c.StderrPipe()
 		if e != nil {
@@ -87,9 +92,8 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 		// changefeed exists in cdc
 		return errors.New("backup to cloud is enabled already")
 	}
-
 	// TODO get s3 info from service
-	c = run(fmt.Sprintf(createChangeFeedCMD, pdHost, "s3://tmp/br-restore/restore_test1?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http%3a%2f%2fminio.pingcap.net%3a9000&force-path-style=true", uuid))
+	c = run(cdcCtl, fmt.Sprintf(createChangeFeedCMD, pdHost, "s3://tmp/br-restore/restore_test1?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http%3a%2f%2fminio.pingcap.net%3a9000&force-path-style=true", uuid))
 	err = c.Run()
 	if err != nil {
 		return err
@@ -121,4 +125,17 @@ func run(name string, args ...string) *exec.Cmd {
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 	return cmd
+}
+
+func binaryPath(home, cmd string) (string, error) {
+	switch cmd {
+	case "tidb", "tikv", "pd":
+		return path.Join(home, cmd+"-ctl"), nil
+	case "binlog", "etcd":
+		return path.Join(home, cmd+"ctl"), nil
+	case "cdc":
+		return path.Join(home, cmd+" cli"), nil
+	default:
+		return "", errors.New("ctl only supports tidb, tikv, pd, binlog, etcd and cdc currently")
+	}
 }
