@@ -29,8 +29,8 @@ import (
 )
 
 const (
-	createChangeFeedCMD = "cdc cli changefeed create --pd \"%s\" --sink-uri=\"%s\" --changefeed-id=\"%s\""
-	getChangeFeedCMD    = "cdc cli changefeed query--pd \"%s\" --changefeed-id=\"%s\""
+	createChangeFeedCMD = "changefeed create --pd '%s' --sink-uri='%s' --changefeed-id='%s'"
+	getChangeFeedCMD    = "changefeed query --pd '%s' --changefeed-id='%s'"
 )
 
 // Backup2Cloud start full backup and log backup to cloud.
@@ -58,7 +58,7 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	var pdHost string
 	topo.IterInstance(func(instance spec.Instance) {
 		fmt.Println("instance role", instance.GetPort(), instance.Role())
-		if instance.Role() == "ticdc" {
+		if instance.Role() == "cdc" {
 			cdcExists = true
 		}
 		if instance.Role() == "pd" {
@@ -73,7 +73,7 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	}
 	// TODO get uuid from service
 	uuid, _ := uuid.NewUUID()
-	c := run(cdcCtl, fmt.Sprintf(getChangeFeedCMD, pdHost, uuid))
+	c := run(cdcCtl, strings.Split(fmt.Sprintf(getChangeFeedCMD, pdHost, uuid), "")...)
 	err = c.Run()
 	if err != nil {
 		stderr, e := c.StderrPipe()
@@ -94,7 +94,7 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 		return errors.New("backup to cloud is enabled already")
 	}
 	// TODO get s3 info from service
-	c = run(cdcCtl, fmt.Sprintf(createChangeFeedCMD, pdHost, "s3://tmp/br-restore/restore_test1?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http%3a%2f%2fminio.pingcap.net%3a9000&force-path-style=true", uuid))
+	c = run(cdcCtl, strings.Split(fmt.Sprintf(createChangeFeedCMD, pdHost, "s3://tmp/br-restore/restore_test1?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http%3a%2f%2fminio.pingcap.net%3a9000&force-path-style=true", uuid), "")...)
 	err = c.Run()
 	if err != nil {
 		return err
