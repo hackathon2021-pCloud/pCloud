@@ -14,7 +14,6 @@
 package manager
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -30,8 +29,8 @@ import (
 )
 
 const (
-	createChangeFeedCMD = "changefeed create --pd '%s' --sink-uri='%s' --changefeed-id='%s'"
-	getChangeFeedCMD    = "changefeed query --pd '%s' --changefeed-id='%s'"
+	createChangeFeedCMD = "changefeed create --pd='%s' --sink-uri='%s' --changefeed-id='%s'"
+	getChangeFeedCMD    = "changefeed query --pd='%s' --changefeed-id='%s'"
 )
 
 // Backup2Cloud start full backup and log backup to cloud.
@@ -62,7 +61,7 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 			cdcExists = true
 		}
 		if instance.Role() == "pd" {
-			pdHost = fmt.Sprintf("https://%s:%d", instance.GetHost(), instance.GetPort())
+			pdHost = fmt.Sprintf("http://%s:%d", instance.GetHost(), instance.GetPort())
 		}
 	})
 	if !cdcExists {
@@ -73,23 +72,17 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	}
 	// TODO get uuid from service
 	uuid, _ := uuid.NewUUID()
-	c := run(cdcCtl, strings.Split(fmt.Sprintf(getChangeFeedCMD, pdHost, uuid), "")...)
-	var outb, errb bytes.Buffer
-	c.Stdout = &outb
-	c.Stderr = &errb
-	err = c.Run()
-	if err != nil {
-		return errors.Annotate(err, "run getChangeFeed failed")
-	}
-	if !strings.Contains(outb.String(), "ErrChangeFeedNotExists") {
-		return errors.Annotate(err, "run getChangeFeed failed")
+	c := run(cdcCtl, strings.Split(fmt.Sprintf(getChangeFeedCMD, pdHost, uuid), " ")...)
+	out, err := c.Output()
+	if err != nil && !strings.Contains(string(out), "ErrChangeFeedNotExists") {
+		return errors.Annotate(err, "run getChangeFeed failed and error not expected")
 	}
 	if err == nil {
 		// changefeed exists in cdc
 		return errors.New("backup to cloud is enabled already")
 	}
 	// TODO get s3 info from service
-	c = run(cdcCtl, strings.Split(fmt.Sprintf(createChangeFeedCMD, pdHost, "s3://tmp/br-restore/restore_test1?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http%3a%2f%2fminio.pingcap.net%3a9000&force-path-style=true", uuid), "")...)
+	c = run(cdcCtl, strings.Split(fmt.Sprintf(createChangeFeedCMD, pdHost, "s3://tmp/br-restore/restore_test1?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http%3a%2f%2fminio.pingcap.net%3a9000&force-path-style=true", uuid), " ")...)
 	err = c.Run()
 	if err != nil {
 		return err
