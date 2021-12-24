@@ -42,10 +42,12 @@ func newCloudCmd() *cobra.Command {
 
 			operation := args[1]
 			switch operation {
-			case "backup": return cm.Backup2Cloud(clusterName, gOpt)
-			case "restore": return cm.RestoreFromCloud(clusterName, gOpt)
+			case "backup":
+				return cm.Backup2Cloud(clusterName, gOpt)
+			case "restore":
+				return cm.RestoreFromCloud(clusterName, gOpt)
 			default:
-				return perrs.Errorf("Cloud cmd not support", operation)
+				return perrs.Errorf("Cloud cmd %s not support", operation)
 			}
 		},
 	}

@@ -14,14 +14,33 @@
 package manager
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+
+	"github.com/google/uuid"
+	"github.com/pingcap/errors"
 	"github.com/pingcap/tiup/pkg/cluster/clusterutil"
 	operator "github.com/pingcap/tiup/pkg/cluster/operation"
 	"github.com/pingcap/tiup/pkg/cluster/spec"
+	"github.com/pingcap/tiup/pkg/localdata"
 )
 
+const (
+	createChangeFeedCMD = "cdc cli changefeed create --pd \"%s\" --sink-uri=\"%s\" --changefeed-id=\"%s\""
+	getChangeFeedCMD    = "cdc cli changefeed query--pd \"%s\" --changefeed-id=\"%s\""
+)
+
+// Backup2Cloud start full backup and log backup to cloud.
 func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	if err := clusterutil.ValidateClusterNameOrError(name); err != nil {
 		return err
+	}
+
+	home := os.Getenv(localdata.EnvNameComponentInstallDir)
+	if home == "" {
+		return errors.New("component `ctl` cannot run in standalone mode")
 	}
 
 	metadata, _ := m.meta(name)
@@ -30,14 +49,55 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	// 2. use br to do a full backup.
 	// 3. use cdc ctl/api to create a changefeed to s3.
 	// 4. tell user backup finished
+	var cdcExists bool
+	var pdHost string
 	topo.IterInstance(func(instance spec.Instance) {
-		// if instance.Role() == "ticdc" {
-		// }
+		if instance.Role() == "ticdc" {
+			cdcExists = true
+		}
+		if instance.Role() == "pd" {
+			pdHost = fmt.Sprintf("https://%s:%d", instance.GetHost(), instance.GetPort())
+		}
 	})
+	if !cdcExists {
+		return errors.New("cluster doesn't have any cdc server")
+	}
+	if len(pdHost) == 0 {
+		return errors.New("cluster doesn't find pd server")
+	}
+	// TODO get uuid from service
+	uuid, _ := uuid.NewUUID()
+	c := run(fmt.Sprintf(getChangeFeedCMD, pdHost, uuid))
+	err := c.Run()
+	if err != nil {
+		stderr, e := c.StderrPipe()
+		if e != nil {
+			return errors.Annotate(e, "run getChangeFeed stderr")
+		}
+		b := make([]byte, 1024)
+		_, e = stderr.Read(b)
+		if e != nil {
+			return errors.Annotate(e, "run getChangeFeed read")
+		}
+		if !strings.Contains(string(b), "ErrChangeFeedNotExists") {
+			return errors.Annotate(err, "run getChangeFeed failed")
+		}
+	}
+	if err == nil {
+		// changefeed exists in cdc
+		return errors.New("backup to cloud is enabled already")
+	}
+
+	// TODO get s3 info from service
+	c = run(fmt.Sprintf(createChangeFeedCMD, pdHost, "s3://tmp/br-restore/restore_test1?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http%3a%2f%2fminio.pingcap.net%3a9000&force-path-style=true", uuid))
+	err = c.Run()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
-
+// RestoreFromCloud start a full backup and log backup from cloud.
 func (m *Manager) RestoreFromCloud(name string, opt operator.Options) error {
 	if err := clusterutil.ValidateClusterNameOrError(name); err != nil {
 		return err
@@ -47,4 +107,18 @@ func (m *Manager) RestoreFromCloud(name string, opt operator.Options) error {
 	// 3. use br to do a cdc log restore.
 	// 4. tell user restore finished and the costs.
 	return nil
+}
+
+func run(name string, args ...string) *exec.Cmd {
+	// Handle `cdc cli`
+	if strings.Contains(name, " ") {
+		xs := strings.Split(name, " ")
+		name = xs[0]
+		args = append(xs[1:], args...)
+	}
+	cmd := exec.Command(name, args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+	return cmd
 }
