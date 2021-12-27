@@ -81,20 +81,6 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	// 2. use br to do a full backup.
 	// 3. use cdc ctl/api to create a changefeed to s3.
 	// 4. tell user backup finished
-	var pdAddr string
-
-	topo.IterInstance(func(instance spec.Instance) {
-		if instance.Role() == "pd" {
-			// TODO handle this when TLS enabled.
-			pdAddr = fmt.Sprintf("http://%s:%d",
-				instance.GetHost(),
-				instance.GetPort())
-		}
-	})
-
-	if err := m.DoBackup(pdAddr, metadata); err != nil {
-		return err
-	}
 
 	var cdcExists bool
 	var pdHost string
@@ -106,6 +92,10 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 			pdHost = fmt.Sprintf("http://%s:%d", instance.GetHost(), instance.GetPort())
 		}
 	})
+	if err := m.DoBackup(pdHost, metadata); err != nil {
+		return err
+	}
+
 	if !cdcExists {
 		return errors.New("cluster doesn't have any cdc server")
 	}
