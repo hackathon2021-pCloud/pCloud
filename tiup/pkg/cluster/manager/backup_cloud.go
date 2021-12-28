@@ -14,6 +14,7 @@
 package manager
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -22,16 +23,42 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pingcap/errors"
+	"github.com/pingcap/tiup/pkg/cluster/backup"
 	"github.com/pingcap/tiup/pkg/cluster/clusterutil"
 	operator "github.com/pingcap/tiup/pkg/cluster/operation"
 	"github.com/pingcap/tiup/pkg/cluster/spec"
+	"github.com/pingcap/tiup/pkg/environment"
 	"github.com/pingcap/tiup/pkg/localdata"
+	"github.com/pingcap/tiup/pkg/utils"
 )
 
 const (
 	createChangeFeedCMD = "changefeed create --pd=%s --sink-uri=%s --changefeed-id=%s"
 	getChangeFeedCMD    = "changefeed query --pd=%s --changefeed-id=%s"
 )
+
+func (m *Manager) DoBackup(pdAddr string, metadata spec.Metadata) error {
+
+	env := environment.GlobalEnv()
+
+	ver, err := env.DownloadComponentIfMissing("br", utils.Version(metadata.GetBaseMeta().Version))
+	if err != nil {
+		return err
+	}
+	fmt.Printf("using BR version %s\n", ver)
+	br, err := env.BinaryPath("br", ver)
+	if err != nil {
+		return err
+	}
+	if len(pdAddr) == 0 {
+		return errors.New("failed to find PD node")
+	}
+	builder := backup.NewBackup(pdAddr)
+	builder.Storage("s3://brie/br2")
+	*builder = append(*builder, "--s3.endpoint", "http://192.168.56.102:9000")
+	b := backup.BR{Path: br, Version: ver}
+	return b.Execute(context.TODO(), *builder...)
+}
 
 // Backup2Cloud start full backup and log backup to cloud.
 func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
@@ -54,6 +81,7 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	// 2. use br to do a full backup.
 	// 3. use cdc ctl/api to create a changefeed to s3.
 	// 4. tell user backup finished
+
 	var cdcExists bool
 	var pdHost string
 	topo.IterInstance(func(instance spec.Instance) {
@@ -64,6 +92,10 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 			pdHost = fmt.Sprintf("http://%s:%d", instance.GetHost(), instance.GetPort())
 		}
 	})
+	if err := m.DoBackup(pdHost, metadata); err != nil {
+		return err
+	}
+
 	if !cdcExists {
 		return errors.New("cluster doesn't have any cdc server")
 	}
