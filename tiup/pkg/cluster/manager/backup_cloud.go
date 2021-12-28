@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/google/uuid"
@@ -31,7 +32,7 @@ import (
 )
 
 const (
-	mockS3 = "s3://tmp/br-restore/%s?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http://minio.pingcap.net:9000&force-path-style=true"
+	mockS3 = "s3://tmp/br-restore/%s/%s?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http://minio.pingcap.net:9000&force-path-style=true"
 )
 
 func (m *Manager) DoBackup(pdAddr string, metadata spec.Metadata, us string) error {
@@ -48,7 +49,7 @@ func (m *Manager) DoBackup(pdAddr string, metadata spec.Metadata, us string) err
 	}
 
 	builder := backup.NewBackup(pdAddr)
-	s := fmt.Sprintf(mockS3, us)
+	s := fmt.Sprintf(mockS3, us, "full")
 	builder.Storage(s)
 	b := backup.BR{Path: br, Version: ver}
 	return b.Execute(context.TODO(), *builder...)
@@ -64,12 +65,12 @@ func (m *Manager) StartsIncrementalBackup(pdAddr string, metadata spec.Metadata,
 	if err != nil {
 		return err
 	}
-	cdcCtl, err := binaryPath(ctl, "cdc")
+	cdcCtl, err := binaryPath(filepath.Dir(ctl), "cdc")
 	if err != nil {
 		return err
 	}
 	c := backup.CdcCtl{Path: cdcCtl, Version: ver}
-	builder := backup.GetInrementalBackup(us, pdAddr)
+	builder := backup.GetIncrementalBackup(us, pdAddr)
 	out, err := c.Execute(context.TODO(), *builder...)
 	if err != nil && !strings.Contains(string(out), "ErrChangeFeedNotExists") {
 		return errors.Annotate(err, "run getChangeFeed failed and error not expected")
@@ -79,7 +80,7 @@ func (m *Manager) StartsIncrementalBackup(pdAddr string, metadata spec.Metadata,
 		return errors.New("backup to cloud is enabled already")
 	}
 	builder = backup.NewIncrementalBackup(us, pdAddr)
-	s := fmt.Sprintf(mockS3, us)
+	s := fmt.Sprintf(mockS3, us, "inc")
 	builder.Storage(s)
 	out, err = c.Execute(context.TODO(), *builder...)
 	fmt.Println("out", string(out))

@@ -46,7 +46,7 @@ type CdcCtl struct {
 type CdcCtlBuilder []string
 
 func NewIncrementalBackup(changeFeedId string, pdAddr string) *CdcCtlBuilder {
-	return &CdcCtlBuilder{"changefeed", "create", "--pd=", pdAddr, "--changefeed-id=", changeFeedId}
+	return &CdcCtlBuilder{"changefeed", "create", "--pd", pdAddr, "--changefeed-id", changeFeedId}
 }
 
 func (builder *CdcCtlBuilder) Storage(s string) {
@@ -57,8 +57,8 @@ func (builder *CdcCtlBuilder) Build() []string {
 	return *builder
 }
 
-func GetInrementalBackup(changeFeedId string, pdAddr string) *CdcCtlBuilder {
-	return &CdcCtlBuilder{"changefeed", "get", "--pd=", pdAddr, "--changefeed-id=", changeFeedId}
+func GetIncrementalBackup(changeFeedId string, pdAddr string) *CdcCtlBuilder {
+	return &CdcCtlBuilder{"changefeed", "query", "--pd", pdAddr, "--changefeed-id", changeFeedId}
 }
 
 func (c *CdcCtl) Execute(ctx context.Context, args ...string) ([]byte, error) {
