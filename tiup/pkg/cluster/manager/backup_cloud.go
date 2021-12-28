@@ -16,7 +16,6 @@ package manager
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
@@ -52,6 +51,35 @@ func (m *Manager) DoBackup(pdAddr string, metadata spec.Metadata, us string) err
 	s := fmt.Sprintf(mockS3, us, "full")
 	builder.Storage(s)
 	b := backup.BR{Path: br, Version: ver}
+	return b.Execute(context.TODO(), *builder...)
+}
+
+func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string) error {
+	env := environment.GlobalEnv()
+
+	ver, err := env.DownloadComponentIfMissing("br", utils.Version(metadata.GetBaseMeta().Version))
+	if err != nil {
+		return err
+	}
+	fmt.Printf("using BR version %s\n", ver)
+	br, err := env.BinaryPath("br", ver)
+	if err != nil {
+		return err
+	}
+	// Do full restore
+	builder := backup.NewRestore(pdAddr)
+	s := fmt.Sprintf(mockS3, us, "full")
+	builder.Storage(s)
+	b := backup.BR{Path: br, Version: ver}
+	err = b.Execute(context.TODO(), *builder...)
+	if err != nil {
+		return err
+	}
+	// Do log restore
+	builder = backup.NewLogRestore(pdAddr)
+	s = fmt.Sprintf(mockS3, us, "inc")
+	builder.Storage(s)
+	b = backup.BR{Path: br, Version: ver}
 	return b.Execute(context.TODO(), *builder...)
 }
 
@@ -128,33 +156,25 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 }
 
 // RestoreFromCloud start a full backup and log backup from cloud.
-func (m *Manager) RestoreFromCloud(name string, opt operator.Options) error {
+func (m *Manager) RestoreFromCloud(name string, us string, opt operator.Options) error {
 	if err := clusterutil.ValidateClusterNameOrError(name); err != nil {
 		return err
 	}
+
+	metadata, _ := m.meta(name)
+	topo := metadata.GetTopology()
 	// 1. start interact with services.
 	// 2. use br to do a full restore.
 	// 3. use br to do a cdc log restore.
 	// 4. tell user restore finished and the costs.
-	return nil
-}
-
-func run(name string, args ...string) *exec.Cmd {
-	// Handle `cdc cli`
-	if strings.Contains(name, " ") {
-		xs := strings.Split(name, " ")
-		name = xs[0]
-		args = append(xs[1:], args...)
+	var pdHost string
+	topo.IterInstance(func(instance spec.Instance) {
+		if instance.Role() == "pd" {
+			pdHost = fmt.Sprintf("http://%s:%d", instance.GetHost(), instance.GetPort())
+		}
+	})
+	if len(pdHost) == 0 {
+		return errors.New("cluster doesn't have any cdc server")
 	}
-	cmd := exec.Command(name, args...)
-	return cmd
-}
-
-func binaryPath(home, cmd string) (string, error) {
-	switch cmd {
-	case "cdc":
-		return path.Join(home, cmd), nil
-	default:
-		return "", errors.New("ctl only supports tidb, tikv, pd, binlog, etcd and cdc currently")
-	}
+	return m.DoRestore(pdHost, metadata, us)
 }
