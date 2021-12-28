@@ -16,9 +16,9 @@ package manager
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/google/uuid"
@@ -28,17 +28,14 @@ import (
 	operator "github.com/pingcap/tiup/pkg/cluster/operation"
 	"github.com/pingcap/tiup/pkg/cluster/spec"
 	"github.com/pingcap/tiup/pkg/environment"
-	"github.com/pingcap/tiup/pkg/localdata"
 	"github.com/pingcap/tiup/pkg/utils"
 )
 
 const (
-	createChangeFeedCMD = "changefeed create --pd=%s --sink-uri=%s --changefeed-id=%s"
-	getChangeFeedCMD    = "changefeed query --pd=%s --changefeed-id=%s"
+	mockS3 = "s3://tmp/br-restore/%s/%s?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http://minio.pingcap.net:9000&force-path-style=true"
 )
 
-func (m *Manager) DoBackup(pdAddr string, metadata spec.Metadata) error {
-
+func (m *Manager) DoBackup(pdAddr string, metadata spec.Metadata, us string) error {
 	env := environment.GlobalEnv()
 
 	ver, err := env.DownloadComponentIfMissing("br", utils.Version(metadata.GetBaseMeta().Version))
@@ -50,28 +47,49 @@ func (m *Manager) DoBackup(pdAddr string, metadata spec.Metadata) error {
 	if err != nil {
 		return err
 	}
-	if len(pdAddr) == 0 {
-		return errors.New("failed to find PD node")
-	}
+
 	builder := backup.NewBackup(pdAddr)
-	builder.Storage("s3://brie/br2")
-	*builder = append(*builder, "--s3.endpoint", "http://192.168.56.102:9000")
+	s := fmt.Sprintf(mockS3, us, "full")
+	builder.Storage(s)
 	b := backup.BR{Path: br, Version: ver}
 	return b.Execute(context.TODO(), *builder...)
+}
+
+func (m *Manager) StartsIncrementalBackup(pdAddr string, metadata spec.Metadata, us string) error {
+	env := environment.GlobalEnv()
+	ver, err := env.DownloadComponentIfMissing("ctl", utils.Version(metadata.GetBaseMeta().Version))
+	if err != nil {
+		return err
+	}
+	ctl, err := env.BinaryPath("ctl", ver)
+	if err != nil {
+		return err
+	}
+	cdcCtl := path.Join(filepath.Dir(ctl), "cdc")
+	c := backup.CdcCtl{Path: cdcCtl, Version: ver}
+	builder := backup.GetIncrementalBackup(us, pdAddr)
+	out, err := c.Execute(context.TODO(), *builder...)
+	if err != nil && !strings.Contains(string(out), "ErrChangeFeedNotExists") {
+		return errors.Annotate(err, "run getChangeFeed failed and error not expected")
+	}
+	if err == nil {
+		// changefeed exists in cdc
+		return errors.New("backup to cloud is enabled already")
+	}
+	builder = backup.NewIncrementalBackup(us, pdAddr)
+	s := fmt.Sprintf(mockS3, us, "inc")
+	builder.Storage(s)
+	out, err = c.Execute(context.TODO(), *builder...)
+	fmt.Println("out", string(out))
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // Backup2Cloud start full backup and log backup to cloud.
 func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	if err := clusterutil.ValidateClusterNameOrError(name); err != nil {
-		return err
-	}
-
-	home := os.Getenv(localdata.EnvNameComponentInstallDir)
-	if home == "" {
-		return errors.New("component `ctl` cannot run in standalone mode")
-	}
-	cdcCtl, err := binaryPath(home, "cdc")
-	if err != nil {
 		return err
 	}
 
@@ -92,36 +110,21 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 			pdHost = fmt.Sprintf("http://%s:%d", instance.GetHost(), instance.GetPort())
 		}
 	})
-	if err := m.DoBackup(pdHost, metadata); err != nil {
-		return err
-	}
-
-	if !cdcExists {
-		return errors.New("cluster doesn't have any cdc server")
-	}
 	if len(pdHost) == 0 {
 		return errors.New("cluster doesn't find pd server")
 	}
+	if !cdcExists {
+		return errors.New("cluster doesn't have any cdc server")
+	}
 	// TODO get uuid from service
 	uuid, _ := uuid.NewUUID()
-	us := uuid.String()[:10]
-	c := run(cdcCtl, strings.Split(fmt.Sprintf(getChangeFeedCMD, pdHost, us), " ")...)
-	out, err := c.Output()
-	if err != nil && !strings.Contains(string(out), "ErrChangeFeedNotExists") {
-		return errors.Annotate(err, "run getChangeFeed failed and error not expected")
-	}
-	if err == nil {
-		// changefeed exists in cdc
-		return errors.New("backup to cloud is enabled already")
-	}
-	// TODO get s3 info from service
-	c = run(cdcCtl, strings.Split(fmt.Sprintf(createChangeFeedCMD, pdHost, "s3://tmp/br-restore/restore_test1?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http%3a%2f%2fminio.pingcap.net%3a9000&force-path-style=true", us), " ")...)
-	out, err = c.Output()
-	fmt.Println("out", string(out))
-	if err != nil {
+	us := uuid.String()
+	fmt.Println("unique string", us)
+
+	if err := m.DoBackup(pdHost, metadata, us); err != nil {
 		return err
 	}
-	return nil
+	return m.StartsIncrementalBackup(pdHost, metadata, us)
 }
 
 // RestoreFromCloud start a full backup and log backup from cloud.
@@ -149,12 +152,8 @@ func run(name string, args ...string) *exec.Cmd {
 
 func binaryPath(home, cmd string) (string, error) {
 	switch cmd {
-	case "tidb", "tikv", "pd":
-		return path.Join(home, cmd+"-ctl"), nil
-	case "binlog", "etcd":
-		return path.Join(home, cmd+"ctl"), nil
 	case "cdc":
-		return path.Join(home, cmd+" cli"), nil
+		return path.Join(home, cmd), nil
 	default:
 		return "", errors.New("ctl only supports tidb, tikv, pd, binlog, etcd and cdc currently")
 	}
