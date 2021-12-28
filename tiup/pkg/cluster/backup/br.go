@@ -15,6 +15,14 @@ type BR struct {
 
 type BRBuilder []string
 
+func NewRestore(pdAddr string) *BRBuilder {
+	return &BRBuilder{"restore", "full", "-u", pdAddr}
+}
+
+func NewLogRestore(pdAddr string) *BRBuilder {
+	return &BRBuilder{"restore", "cdclog", "-u", pdAddr}
+}
+
 func NewBackup(pdAddr string) *BRBuilder {
 	return &BRBuilder{"backup", "full", "-u", pdAddr}
 }

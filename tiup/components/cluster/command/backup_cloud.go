@@ -23,7 +23,7 @@ func newCloudCmd() *cobra.Command {
 		Use:   "cloud <cluster-name> <operation>",
 		Short: "backup data to cloud for PiTR/restore backup data from cloud",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) != 2 {
+			if len(args) != 2 && len(args) != 3 {
 				return cmd.Help()
 			}
 
@@ -45,7 +45,9 @@ func newCloudCmd() *cobra.Command {
 			case "backup":
 				return cm.Backup2Cloud(clusterName, gOpt)
 			case "restore":
-				return cm.RestoreFromCloud(clusterName, gOpt)
+				// TODO get us from service
+				us := args[2]
+				return cm.RestoreFromCloud(clusterName, us, gOpt)
 			default:
 				return perrs.Errorf("Cloud cmd %s not support", operation)
 			}
