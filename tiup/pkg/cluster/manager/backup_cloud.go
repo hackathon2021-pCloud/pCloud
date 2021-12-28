@@ -60,7 +60,11 @@ func (m *Manager) StartsIncrementalBackup(pdAddr string, metadata spec.Metadata,
 	if err != nil {
 		return err
 	}
-	cdcCtl, err := env.BinaryPath("cdc", ver)
+	ctl, err := env.BinaryPath("ctl", ver)
+	if err != nil {
+		return err
+	}
+	cdcCtl, err := binaryPath(ctl, "cdc")
 	if err != nil {
 		return err
 	}
