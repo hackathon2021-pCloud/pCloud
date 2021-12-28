@@ -65,10 +65,7 @@ func (m *Manager) StartsIncrementalBackup(pdAddr string, metadata spec.Metadata,
 	if err != nil {
 		return err
 	}
-	cdcCtl, err := binaryPath(filepath.Dir(ctl), "cdc")
-	if err != nil {
-		return err
-	}
+	cdcCtl := path.Join(filepath.Dir(ctl), "cdc")
 	c := backup.CdcCtl{Path: cdcCtl, Version: ver}
 	builder := backup.GetIncrementalBackup(us, pdAddr)
 	out, err := c.Execute(context.TODO(), *builder...)
@@ -155,12 +152,8 @@ func run(name string, args ...string) *exec.Cmd {
 
 func binaryPath(home, cmd string) (string, error) {
 	switch cmd {
-	case "tidb", "tikv", "pd":
-		return path.Join(home, cmd+"-ctl"), nil
-	case "binlog", "etcd":
-		return path.Join(home, cmd+"ctl"), nil
 	case "cdc":
-		return path.Join(home, cmd+" cli"), nil
+		return path.Join(home, cmd), nil
 	default:
 		return "", errors.New("ctl only supports tidb, tikv, pd, binlog, etcd and cdc currently")
 	}
