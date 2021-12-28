@@ -68,7 +68,7 @@ func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string) er
 	}
 	// Do full restore
 	builder := backup.NewRestore(pdAddr)
-	s := fmt.Sprintf(mockS3, "us", "full")
+	s := fmt.Sprintf(mockS3, us, "full")
 	builder.Storage(s)
 	b := backup.BR{Path: br, Version: ver}
 	err = b.Execute(context.TODO(), *builder...)
@@ -77,7 +77,7 @@ func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string) er
 	}
 	// Do log restore
 	builder = backup.NewLogRestore(pdAddr)
-	s = fmt.Sprintf(mockS3, "us", "inc")
+	s = fmt.Sprintf(mockS3, us, "inc")
 	builder.Storage(s)
 	b = backup.BR{Path: br, Version: ver}
 	return b.Execute(context.TODO(), *builder...)
