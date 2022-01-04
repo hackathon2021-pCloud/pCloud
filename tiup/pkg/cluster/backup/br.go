@@ -2,8 +2,6 @@ package backup
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"os/exec"
 
 	"github.com/pingcap/tiup/pkg/utils"
@@ -38,10 +36,9 @@ func (builder *BRBuilder) Build() []string {
 
 func (br *BR) Execute(ctx context.Context, args ...string) error {
 	cmd := exec.CommandContext(ctx, br.Path, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	// cmd.Stdout = os.Stdout
+	// cmd.Stderr = os.Stderr
 	cmd.Env = []string{"AWS_ACCESS_KEY=root", "AWS_SECRET_KEY=a123456;"}
-	fmt.Println("executing ", args)
 	cmd.Start()
 	return cmd.Wait()
 }
@@ -72,6 +69,5 @@ func GetIncrementalBackup(changeFeedId string, pdAddr string) *CdcCtlBuilder {
 
 func (c *CdcCtl) Execute(ctx context.Context, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, c.Path, args...)
-	fmt.Println("executing ", c.Path, args)
 	return cmd.Output()
 }

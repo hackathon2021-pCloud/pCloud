@@ -114,7 +114,6 @@ func (m *Manager) StartsIncrementalBackup(pdAddr string, metadata spec.Metadata,
 	s := fmt.Sprintf(mockS3, us, "inc")
 	builder.Storage(s)
 	out, err = c.Execute(context.TODO(), *builder...)
-	fmt.Println("out", string(out))
 	if err != nil {
 		return err
 	}
@@ -165,8 +164,8 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 		return err
 	}
 	var clusterID string
-	fmt.Println("please login pCloud service( " + api.GetRegisterTokenUrl(token) +" ) and paste unique token")
-	fmt.Print("unique token:")
+	fmt.Println("please login pCloud service( " + api.GetRegisterTokenUrl(token) + " ) and paste unique token")
+	fmt.Print("unique token: ")
 	fmt.Scanf("%s", clusterID)
 	if len(clusterID) != 0 {
 		err = m.SaveToFile(clusterFile, clusterID)
@@ -177,10 +176,16 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 		return errors.New("invalid input")
 	}
 
-	if err := m.DoBackup(pdHost, metadata, clusterID); err != nil {
+	err = m.DoBackup(pdHost, metadata, clusterID)
+	if err != nil {
 		return err
 	}
-	return m.StartsIncrementalBackup(pdHost, metadata, us)
+	err = m.StartsIncrementalBackup(pdHost, metadata, us)
+	if err != nil {
+		return err
+	}
+	fmt.Println("pitr enabled! you can check the cluster in ", api.GetClusterInfoUrl(us, clusterID))
+	return nil
 }
 
 func (m *Manager) SaveToFile(file string, content string) error {

@@ -10,6 +10,10 @@ import (
 
 const HOST = "https://pcloud-fe.vercel.app"
 
+func GetClusterInfoUrl(authKey string, clusterID string) string {
+	return fmt.Sprintf("%s/api/cluster?authKey=%s&clusterId=%s", HOST, authKey, clusterID)
+}
+
 func GetRegisterTokenUrl(token string) string {
 	return fmt.Sprintf("%s/register?register_token=%s", HOST, token)
 }
