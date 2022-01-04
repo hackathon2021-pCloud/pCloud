@@ -47,7 +47,6 @@ func (m *Manager) DoBackup(pdAddr string, metadata spec.Metadata, us string) err
 	if err != nil {
 		return err
 	}
-	fmt.Printf("using BR version %s\n", ver)
 	br, err := env.BinaryPath("br", ver)
 	if err != nil {
 		return err
@@ -67,7 +66,6 @@ func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string) er
 	if err != nil {
 		return err
 	}
-	fmt.Printf("using BR version %s\n", ver)
 	br, err := env.BinaryPath("br", ver)
 	if err != nil {
 		return err
@@ -184,7 +182,7 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("pitr enabled! you can check the cluster in ", api.GetClusterInfoUrl(us, clusterID))
+	fmt.Println("pitr to cloud enabled! you can check the cluster in ", api.HOST)
 	return nil
 }
 
