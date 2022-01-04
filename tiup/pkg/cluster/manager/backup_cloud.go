@@ -31,7 +31,8 @@ import (
 )
 
 const (
-	mockS3 = "s3://tmp/br-restore/%s/%s?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http://minio.pingcap.net:9000&force-path-style=true"
+	mockS3     = "s3://tmp/br-restore/%s/%s?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http://minio.pingcap.net:9000&force-path-style=true"
+	localMinio = "s3://brie/%s/%s?endpoint=http://192.168.56.102:9000"
 )
 
 func (m *Manager) DoBackup(pdAddr string, metadata spec.Metadata, us string) error {
@@ -48,10 +49,14 @@ func (m *Manager) DoBackup(pdAddr string, metadata spec.Metadata, us string) err
 	}
 
 	builder := backup.NewBackup(pdAddr)
-	s := fmt.Sprintf(mockS3, us, "full")
+	s := fmt.Sprintf(localMinio, us, "full")
 	builder.Storage(s)
 	b := backup.BR{Path: br, Version: ver}
-	return b.Execute(context.TODO(), *builder...)
+	proc := b.Execute(context.TODO(), *builder...)
+	proc.Trace.OnProgress(func(progress backup.Progress) {
+		fmt.Printf("%+v\n", progress)
+	})
+	return proc.Handle.Wait()
 }
 
 func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string) error {
@@ -71,7 +76,7 @@ func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string) er
 	s := fmt.Sprintf(mockS3, us, "full")
 	builder.Storage(s)
 	b := backup.BR{Path: br, Version: ver}
-	err = b.Execute(context.TODO(), *builder...)
+	err = b.Execute(context.TODO(), *builder...).Handle.Wait()
 	if err != nil {
 		return err
 	}
@@ -80,7 +85,7 @@ func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string) er
 	s = fmt.Sprintf(mockS3, us, "inc")
 	builder.Storage(s)
 	b = backup.BR{Path: br, Version: ver}
-	return b.Execute(context.TODO(), *builder...)
+	return b.Execute(context.TODO(), *builder...).Handle.Wait()
 }
 
 func (m *Manager) StartsIncrementalBackup(pdAddr string, metadata spec.Metadata, us string) error {

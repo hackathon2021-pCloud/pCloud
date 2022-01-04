@@ -3,9 +3,11 @@ package backup
 import (
 	"context"
 	"fmt"
-	"github.com/pingcap/tiup/pkg/utils"
+	"io"
 	"os"
 	"os/exec"
+
+	"github.com/pingcap/tiup/pkg/utils"
 )
 
 type BR struct {
@@ -16,15 +18,15 @@ type BR struct {
 type BRBuilder []string
 
 func NewRestore(pdAddr string) *BRBuilder {
-	return &BRBuilder{"restore", "full", "-u", pdAddr}
+	return &BRBuilder{"restore", "full", "-u", pdAddr, "--log-format", "json"}
 }
 
 func NewLogRestore(pdAddr string) *BRBuilder {
-	return &BRBuilder{"restore", "cdclog", "-u", pdAddr}
+	return &BRBuilder{"restore", "cdclog", "-u", pdAddr, "--log-format", "json"}
 }
 
 func NewBackup(pdAddr string) *BRBuilder {
-	return &BRBuilder{"backup", "full", "-u", pdAddr}
+	return &BRBuilder{"backup", "full", "-u", pdAddr, "--log-format", "json"}
 }
 
 func (builder *BRBuilder) Storage(s string) {
@@ -35,14 +37,24 @@ func (builder *BRBuilder) Build() []string {
 	return *builder
 }
 
-func (br *BR) Execute(ctx context.Context, args ...string) error {
+type BRProcess struct {
+	Trace  ProgressTracer
+	Handle *exec.Cmd
+}
+
+func (br *BR) Execute(ctx context.Context, args ...string) BRProcess {
 	cmd := exec.CommandContext(ctx, br.Path, args...)
-	cmd.Stdout = os.Stdout
+	r, w := io.Pipe()
+	tr := TraceByLog(r)
+	cmd.Stdout = w
 	cmd.Stderr = os.Stderr
-	cmd.Env = []string{"AWS_ACCESS_KEY=root", "AWS_SECRET_KEY=a123456;"}
+	cmd.Env = []string{"AWS_ACCESS_KEY=root", "AWS_SECRET_KEY=a123456;", "BR_LOG_TO_TERM=1"}
 	fmt.Println("executing ", args)
 	cmd.Start()
-	return cmd.Wait()
+	return BRProcess{
+		Handle: cmd,
+		Trace:  tr,
+	}
 }
 
 type CdcCtl struct {

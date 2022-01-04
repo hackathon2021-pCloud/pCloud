@@ -81,7 +81,7 @@ func (lt *LogProgressTracer) ReadLoop() {
 		prog := BRProgress{}
 		err := json.Unmarshal([]byte(lines.Text()), &prog)
 		if err != nil {
-			log.Warnf("failed to parse progress (err = %s)", err)
+			log.Warnf("failed to parse progress (err = %s, text = %s)", err, lines.Text())
 		}
 		if prog.Message == "progress" {
 			lt.SendProgress(prog.ToProgress())
