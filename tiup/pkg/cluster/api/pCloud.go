@@ -1,25 +1,28 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"strings"
 )
 
 const HOST = "https://pcloud-fe.vercel.app"
 
 func GetRegisterToken(authKey string) (string, error) {
-	req, err := http.Post(fmt.Sprintf("%s/api/register-token", HOST),"application/json", strings.NewReader(fmt.Sprintf(`
-	{
-		"authKey": "%s"
-	}
-	`, authKey)))
+	jsonStr := []byte(fmt.Sprintf(`{"authKey":"%s"}`, authKey))
+	url := fmt.Sprintf("%s/api/register-token", HOST)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
-	body, err := ioutil.ReadAll(req.Body)
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}

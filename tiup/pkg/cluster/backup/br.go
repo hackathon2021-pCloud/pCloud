@@ -3,9 +3,10 @@ package backup
 import (
 	"context"
 	"fmt"
-	"github.com/pingcap/tiup/pkg/utils"
 	"os"
 	"os/exec"
+
+	"github.com/pingcap/tiup/pkg/utils"
 )
 
 type BR struct {

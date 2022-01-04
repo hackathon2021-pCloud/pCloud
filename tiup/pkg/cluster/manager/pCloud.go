@@ -16,11 +16,12 @@ package manager
 import (
 	"context"
 	"fmt"
-	"github.com/pingcap/tiup/pkg/cluster/api"
 	"io/ioutil"
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/pingcap/tiup/pkg/cluster/api"
 
 	"github.com/google/uuid"
 	"github.com/pingcap/errors"
@@ -33,9 +34,9 @@ import (
 )
 
 const (
-	mockS3 = "s3://tmp/br-restore/%s/%s?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http://minio.pingcap.net:9000&force-path-style=true"
-	tokenFile = "/tmp/tokenFile"
-	authFile = "/tmp/authFile"
+	mockS3      = "s3://tmp/br-restore/%s/%s?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http://minio.pingcap.net:9000&force-path-style=true"
+	tokenFile   = "/tmp/tokenFile"
+	authFile    = "/tmp/authFile"
 	clusterFile = "/tmp/clusterFile"
 )
 
@@ -164,7 +165,7 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 		return err
 	}
 	var clusterID string
-	fmt.Println("please login pCloud service("+api.HOST+"/"+token+") and paste unique token")
+	fmt.Println("please login pCloud service(" + api.HOST + "/" + token + ") and paste unique token")
 	fmt.Print("unique token:")
 	fmt.Scanf("%s", clusterID)
 	if len(clusterID) != 0 {
