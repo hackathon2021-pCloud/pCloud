@@ -165,7 +165,7 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 		return err
 	}
 	var clusterID string
-	fmt.Println("please login pCloud service(" + api.HOST + "/" + token + ") and paste unique token")
+	fmt.Println("please login pCloud service( " + api.GetRegisterTokenUrl(token) +" ) and paste unique token")
 	fmt.Print("unique token:")
 	fmt.Scanf("%s", clusterID)
 	if len(clusterID) != 0 {

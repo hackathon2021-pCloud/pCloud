@@ -10,6 +10,10 @@ import (
 
 const HOST = "https://pcloud-fe.vercel.app"
 
+func GetRegisterTokenUrl(token string) string {
+	return fmt.Sprintf("%s/register?register_token=%s", HOST, token)
+}
+
 func GetRegisterToken(authKey string) (string, error) {
 	jsonStr := []byte(fmt.Sprintf(`{"authKey":"%s"}`, authKey))
 	url := fmt.Sprintf("%s/api/register-token", HOST)
@@ -31,5 +35,5 @@ func GetRegisterToken(authKey string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("%v", m["register-token"]), nil
+	return fmt.Sprintf("%v", m["registerToken"]), nil
 }
