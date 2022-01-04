@@ -16,6 +16,8 @@ package manager
 import (
 	"context"
 	"fmt"
+	"github.com/pingcap/tiup/pkg/cluster/api"
+	"io/ioutil"
 	"path"
 	"path/filepath"
 	"strings"
@@ -32,6 +34,9 @@ import (
 
 const (
 	mockS3 = "s3://tmp/br-restore/%s/%s?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http://minio.pingcap.net:9000&force-path-style=true"
+	tokenFile = "/tmp/tokenFile"
+	authFile = "/tmp/authFile"
+	clusterFile = "/tmp/clusterFile"
 )
 
 func (m *Manager) DoBackup(pdAddr string, metadata spec.Metadata, us string) error {
@@ -144,15 +149,45 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	if !cdcExists {
 		return errors.New("cluster doesn't have any cdc server")
 	}
-	// TODO get uuid from service
 	uuid, _ := uuid.NewUUID()
 	us := uuid.String()
-	fmt.Println("unique string", us)
+	err := m.SaveToFile(authFile, us)
+	if err != nil {
+		return err
+	}
+	token, err := api.GetRegisterToken(us)
+	if err != nil {
+		return err
+	}
+	err = m.SaveToFile(tokenFile, token)
+	if err != nil {
+		return err
+	}
+	var clusterID string
+	fmt.Println("please login pCloud service("+api.HOST+"/"+token+") and paste unique token")
+	fmt.Print("unique token:")
+	fmt.Scanf("%s", clusterID)
+	if len(clusterID) != 0 {
+		err = m.SaveToFile(clusterFile, clusterID)
+		if err != nil {
+			return err
+		}
+	} else {
+		return errors.New("invalid input")
+	}
 
-	if err := m.DoBackup(pdHost, metadata, us); err != nil {
+	if err := m.DoBackup(pdHost, metadata, clusterID); err != nil {
 		return err
 	}
 	return m.StartsIncrementalBackup(pdHost, metadata, us)
+}
+
+func (m *Manager) SaveToFile(file string, content string) error {
+	err := ioutil.WriteFile(file, []byte(content), 0644)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // RestoreFromCloud start a full backup and log backup from cloud.
