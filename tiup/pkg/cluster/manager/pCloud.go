@@ -153,25 +153,40 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	if err != nil {
 		return err
 	}
-	token, err := api.GetRegisterToken(us)
+	// try get token from file
+	token, err := m.GetFromFile(tokenFile)
 	if err != nil {
 		return err
 	}
-	err = m.SaveToFile(tokenFile, token)
+	// cannot get token from file
+	if len(token) == 0 {
+		token, err = api.GetRegisterToken(us)
+		if err != nil {
+			return err
+		}
+		err = m.SaveToFile(tokenFile, token)
+		if err != nil {
+			return err
+		}
+	}
+	// try get cluster from file
+	clusterID, err := m.GetFromFile(clusterFile)
 	if err != nil {
 		return err
 	}
-	var clusterID string
-	fmt.Println("please login pCloud service( " + api.GetRegisterTokenUrl(token) + " ) and paste unique token")
-	fmt.Print("unique token: ")
-	fmt.Scanf("%s", &clusterID)
 	if len(clusterID) != 0 {
+		fmt.Println("this cluster has enable pitr before!")
+	} else {
+		fmt.Println("please login pCloud service( " + api.GetRegisterTokenUrl(token) + " ) and paste unique token")
+		fmt.Print("unique token: ")
+		fmt.Scanf("%s", &clusterID)
+		if len(clusterID) == 0 {
+			return errors.New("input unique token is invalid")
+		}
 		err = m.SaveToFile(clusterFile, clusterID)
 		if err != nil {
 			return err
 		}
-	} else {
-		return errors.New("invalid input")
 	}
 
 	err = m.DoBackup(pdHost, metadata, clusterID)
@@ -184,6 +199,14 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	}
 	fmt.Println("pitr to cloud enabled! you can check the cluster in ", api.HOST)
 	return nil
+}
+
+func (m *Manager) GetFromFile(file string) (string, error) {
+	content, err := ioutil.ReadFile(file)
+	if err != nil {
+		return "", err
+	}
+	return string(content), nil
 }
 
 func (m *Manager) SaveToFile(file string, content string) error {
