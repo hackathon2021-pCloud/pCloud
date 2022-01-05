@@ -156,9 +156,19 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	authKey := sha
 	authDir := filepath.Join(cloudDir, authKey)
 	tokenFile := filepath.Join(authDir, "tokenFile")
-	if _, err := os.Stat(tokenFile); os.IsNotExist(err) {
+	var (
+		err error
+		token string
+	    clusterID string
+	)
+	if _, err = os.Stat(tokenFile); os.IsNotExist(err) {
 		// try get token from service
-		token, err := api.GetRegisterToken(authKey)
+		err = os.MkdirAll(authDir, 0644)
+		if err != nil {
+			return err
+		}
+
+		token, err = api.GetRegisterToken(authKey)
 		if err != nil {
 			return err
 		}
@@ -167,15 +177,14 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 			return err
 		}
 	}
-	token, err := m.GetFromFile(tokenFile)
+	token, err = m.GetFromFile(tokenFile)
 	// cannot get token from file
 	if err != nil {
 		return err
 	}
 	clusterFile := filepath.Join(authDir, "cloudFile")
 	// try get cluster from file
-	var clusterID string
-	if _, err := os.Stat(clusterFile); os.IsNotExist(err) {
+	if _, err = os.Stat(clusterFile); os.IsNotExist(err) {
 		fmt.Println("please login pCloud service(" + api.GetRegisterTokenUrl(token) + ") and paste unique token")
 		fmt.Print("unique token: ")
 		fmt.Scanf("%s", &clusterID)
