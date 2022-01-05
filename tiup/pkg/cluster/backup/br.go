@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -18,7 +19,8 @@ type BR struct {
 type BRBuilder []string
 
 func NewRestore(pdAddr string) *BRBuilder {
-	return &BRBuilder{"restore", "full", "-u", pdAddr, "--log-format", "json"}
+	// ignore checksum for log restore
+	return &BRBuilder{"restore", "full", "-u", pdAddr, "--checksum=false", "--log-format", "json"}
 }
 
 func NewLogRestore(pdAddr string) *BRBuilder {
@@ -61,6 +63,7 @@ type CdcCtl struct {
 	changeFeedId string
 	Path         string
 	Version      utils.Version
+	PipeYes      bool
 }
 
 type CdcCtlBuilder []string
@@ -82,7 +85,30 @@ func GetIncrementalBackup(changeFeedId string, pdAddr string) *CdcCtlBuilder {
 }
 
 func (c *CdcCtl) Execute(ctx context.Context, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, c.Path, args...)
-	fmt.Println("executing ", c.Path, args)
-	return cmd.Output()
+	// use pipeline to avoid input yes in cdc ctl
+	if c.PipeYes {
+		c1 := exec.CommandContext(ctx, "echo", "Y")
+		c2 := exec.CommandContext(ctx, c.Path, args...)
+
+		c2.Stdin, _ = c1.StdoutPipe()
+		var outb bytes.Buffer
+		c2.Stdout = &outb
+		err := c2.Start()
+		if err != nil {
+			return nil, err
+		}
+		err = c1.Run()
+		if err != nil {
+			return nil, err
+		}
+		err = c2.Wait()
+		if err != nil {
+			return nil, err
+		}
+		return outb.Bytes(), nil
+	} else {
+		cmd := exec.CommandContext(ctx, c.Path, args...)
+		return cmd.Output()
+	}
+
 }

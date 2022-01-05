@@ -15,12 +15,19 @@ package manager
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/base64"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
 
-	"github.com/google/uuid"
+	"github.com/fatih/color"
+
+	"github.com/pingcap/tiup/pkg/cluster/api"
+
 	"github.com/pingcap/errors"
 	"github.com/pingcap/tiup/pkg/cluster/backup"
 	"github.com/pingcap/tiup/pkg/cluster/clusterutil"
@@ -33,7 +40,21 @@ import (
 const (
 	mockS3     = "s3://tmp/br-restore/%s/%s?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http://minio.pingcap.net:9000&force-path-style=true"
 	localMinio = "s3://brie/%s/%s?endpoint=http://192.168.56.102:9000"
+	s3Address  = "s3://pcloud2021/backups/%s/%s?access-key=%s&secret-access-key=%s&force-path-style=true&region=us-west-2"
+	cloudDir   = "/tmp/cloud"
 )
+
+func (m *Manager) getAccessKey() string {
+	return os.Getenv("ACCESS_KEY")
+}
+
+func (m *Manager) getSecretAccessKey() string {
+	return os.Getenv("SECRET_ACCESS_KEY")
+}
+
+func (m *Manager) getS3Address(s, t string) string {
+	return fmt.Sprintf(s3Address, s, t, m.getAccessKey(), m.getSecretAccessKey())
+}
 
 func (m *Manager) DoBackup(pdAddr string, metadata spec.Metadata, us string) error {
 	env := environment.GlobalEnv()
@@ -42,15 +63,13 @@ func (m *Manager) DoBackup(pdAddr string, metadata spec.Metadata, us string) err
 	if err != nil {
 		return err
 	}
-	fmt.Printf("using BR version %s\n", ver)
 	br, err := env.BinaryPath("br", ver)
 	if err != nil {
 		return err
 	}
 
 	builder := backup.NewBackup(pdAddr)
-	s := fmt.Sprintf(localMinio, us, "full")
-	builder.Storage(s)
+	builder.Storage(m.getS3Address(us, "full"))
 	b := backup.BR{Path: br, Version: ver}
 	proc := b.Execute(context.TODO(), *builder...)
 	proc.Trace.OnProgress(func(progress backup.Progress) {
@@ -66,25 +85,24 @@ func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string) er
 	if err != nil {
 		return err
 	}
-	fmt.Printf("using BR version %s\n", ver)
 	br, err := env.BinaryPath("br", ver)
 	if err != nil {
 		return err
 	}
 	// Do full restore
 	builder := backup.NewRestore(pdAddr)
-	s := fmt.Sprintf(mockS3, us, "full")
-	builder.Storage(s)
+	builder.Storage(m.getS3Address(us, "full"))
 	b := backup.BR{Path: br, Version: ver}
+	fmt.Println(color.GreenString("start downloading..."))
 	err = b.Execute(context.TODO(), *builder...).Handle.Wait()
 	if err != nil {
 		return err
 	}
 	// Do log restore
 	builder = backup.NewLogRestore(pdAddr)
-	s = fmt.Sprintf(mockS3, us, "inc")
-	builder.Storage(s)
+	builder.Storage(m.getS3Address(us, "inc"))
 	b = backup.BR{Path: br, Version: ver}
+	fmt.Println(color.GreenString("start incremental downloading..."))
 	return b.Execute(context.TODO(), *builder...).Handle.Wait()
 }
 
@@ -109,11 +127,10 @@ func (m *Manager) StartsIncrementalBackup(pdAddr string, metadata spec.Metadata,
 		// changefeed exists in cdc
 		return errors.New("backup to cloud is enabled already")
 	}
+	c.PipeYes = true
 	builder = backup.NewIncrementalBackup(us, pdAddr)
-	s := fmt.Sprintf(mockS3, us, "inc")
-	builder.Storage(s)
+	builder.Storage(m.getS3Address(us, "inc"))
 	out, err = c.Execute(context.TODO(), *builder...)
-	fmt.Println("out", string(out))
 	if err != nil {
 		return err
 	}
@@ -149,15 +166,89 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	if !cdcExists {
 		return errors.New("cluster doesn't have any cdc server")
 	}
-	// TODO get uuid from service
-	uuid, _ := uuid.NewUUID()
-	us := uuid.String()
-	fmt.Println("unique string", us)
+	// authKey is the validation code for one cluster.
+	// the same cluster has the same authKey.
+	hasher := sha1.New()
+	hasher.Write([]byte(name))
+	sha := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
+	authKey := sha
+	authDir := filepath.Join(cloudDir, authKey)
+	tokenFile := filepath.Join(authDir, "tokenFile")
+	var (
+		err       error
+		token     string
+		clusterID string
+	)
+	if _, err = os.Stat(tokenFile); os.IsNotExist(err) {
+		// try get token from service
+		err = os.MkdirAll(authDir, 0644)
+		if err != nil {
+			return err
+		}
 
-	if err := m.DoBackup(pdHost, metadata, us); err != nil {
+		token, err = api.GetRegisterToken(authKey)
+		if err != nil {
+			return err
+		}
+		err = m.SaveToFile(tokenFile, token)
+		if err != nil {
+			return err
+		}
+	}
+	token, err = m.GetFromFile(tokenFile)
+	// cannot get token from file
+	if err != nil {
 		return err
 	}
-	return m.StartsIncrementalBackup(pdHost, metadata, us)
+	clusterFile := filepath.Join(authDir, "cloudFile")
+	// try get cluster from file
+	if _, err = os.Stat(clusterFile); os.IsNotExist(err) {
+		fmt.Println("please login pCloud service(" + api.GetRegisterTokenUrl(token) + ") and paste unique token")
+		fmt.Print("unique token: ")
+		fmt.Scanf("%s", &clusterID)
+		if len(clusterID) == 0 {
+			return errors.New("input unique token is invalid")
+		}
+		err = m.SaveToFile(clusterFile, clusterID)
+		if err != nil {
+			return err
+		}
+		fmt.Println(color.GreenString("Starting streaming.."))
+		err = m.StartsIncrementalBackup(pdHost, metadata, clusterID)
+		if err != nil {
+			return err
+		}
+		fmt.Println(color.GreenString("Starting upload.."))
+		err = m.DoBackup(pdHost, metadata, clusterID)
+		if err != nil {
+			return err
+		}
+
+		fmt.Println("pitr to cloud enabled! you can check the progress in ", color.BlueString(api.HOST))
+	} else {
+		clusterID, err = m.GetFromFile(clusterFile)
+		if err != nil {
+			return err
+		}
+		fmt.Println("this cluster(ID:"+color.YellowString(clusterID)+") has enable pitr before! please check in ", color.BlueString(api.HOST))
+	}
+	return nil
+}
+
+func (m *Manager) GetFromFile(file string) (string, error) {
+	content, err := ioutil.ReadFile(file)
+	if err != nil {
+		return "", err
+	}
+	return string(content), nil
+}
+
+func (m *Manager) SaveToFile(file string, content string) error {
+	err := ioutil.WriteFile(file, []byte(content), 0644)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // RestoreFromCloud start a full backup and log backup from cloud.
