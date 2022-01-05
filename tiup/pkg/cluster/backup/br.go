@@ -3,6 +3,7 @@ package backup
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os/exec"
 
 	"github.com/pingcap/tiup/pkg/utils"
@@ -18,7 +19,7 @@ type BRBuilder []string
 
 func NewRestore(pdAddr string) *BRBuilder {
 	// ignore checksum for log restore
-	return &BRBuilder{"restore", "full", "-u", pdAddr, "--checksum", "false"}
+	return &BRBuilder{"restore", "full", "-u", pdAddr, "--checksum=false"}
 }
 
 func NewLogRestore(pdAddr string) *BRBuilder {
@@ -39,6 +40,7 @@ func (builder *BRBuilder) Build() []string {
 
 func (br *BR) Execute(ctx context.Context, args ...string) error {
 	cmd := exec.CommandContext(ctx, br.Path, args...)
+	fmt.Println(br.Path, args)
 	if br.Wait {
 		return cmd.Run()
 	}
