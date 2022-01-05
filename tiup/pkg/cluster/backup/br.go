@@ -51,7 +51,7 @@ type CdcCtl struct {
 type CdcCtlBuilder []string
 
 func NewIncrementalBackup(changeFeedId string, pdAddr string) *CdcCtlBuilder {
-	return &CdcCtlBuilder{"cli", "changefeed", "create", "--pd", pdAddr, "--changefeed-id", changeFeedId}
+	return &CdcCtlBuilder{"echo", "Y", "|", "cli", "changefeed", "create", "--pd", pdAddr, "--changefeed-id", changeFeedId}
 }
 
 func (builder *CdcCtlBuilder) Storage(s string) {

@@ -125,7 +125,6 @@ func (m *Manager) StartsIncrementalBackup(pdAddr string, metadata spec.Metadata,
 	if err != nil {
 		return err
 	}
-	fmt.Println("out:", out)
 	return nil
 }
 
