@@ -204,6 +204,15 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 		if err != nil {
 			return err
 		}
+		err = m.DoBackup(pdHost, metadata, clusterID)
+		if err != nil {
+			return err
+		}
+		err = m.StartsIncrementalBackup(pdHost, metadata, clusterID)
+		if err != nil {
+			return err
+		}
+		fmt.Println("pitr to cloud enabled! you can check the cluster in ", color.BlueString(api.HOST))
 	} else {
 		clusterID, err = m.GetFromFile(clusterFile)
 		if err != nil {
@@ -211,16 +220,6 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 		}
 		fmt.Println("this cluster(ID:"+color.YellowString(clusterID)+") has enable pitr before! please check in ", color.BlueString(api.HOST))
 	}
-
-	err = m.DoBackup(pdHost, metadata, clusterID)
-	if err != nil {
-		return err
-	}
-	err = m.StartsIncrementalBackup(pdHost, metadata, clusterID)
-	if err != nil {
-		return err
-	}
-	fmt.Println("pitr to cloud enabled! you can check the cluster in ", color.BlueString(api.HOST))
 	return nil
 }
 
