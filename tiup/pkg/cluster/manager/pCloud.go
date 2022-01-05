@@ -204,14 +204,18 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 		if err != nil {
 			return err
 		}
-		err = m.DoBackup(pdHost, metadata, clusterID)
-		if err != nil {
-			return err
-		}
-		err = m.StartsIncrementalBackup(pdHost, metadata, clusterID)
-		if err != nil {
-			return err
-		}
+		go func() {
+			fmt.Println(color.GreenString("Starting.."))
+			err = m.DoBackup(pdHost, metadata, clusterID)
+			if err != nil {
+				fmt.Println(err)
+			}
+			err = m.StartsIncrementalBackup(pdHost, metadata, clusterID)
+			if err != nil {
+				fmt.Println(err)
+			}
+			fmt.Println(color.GreenString("finished.."))
+		}()
 		fmt.Println("pitr to cloud enabled! you can check the cluster in ", color.BlueString(api.HOST))
 	} else {
 		clusterID, err = m.GetFromFile(clusterFile)
