@@ -18,12 +18,13 @@ import (
 	"crypto/sha1"
 	"encoding/base64"
 	"fmt"
-	"github.com/fatih/color"
 	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/fatih/color"
 
 	"github.com/pingcap/tiup/pkg/cluster/api"
 
@@ -37,9 +38,10 @@ import (
 )
 
 const (
-	mockS3      = "s3://tmp/br-restore/%s/%s?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http://minio.pingcap.net:9000&force-path-style=true"
-	s3Address   = "s3://pcloud2021/backups/%s/%s?access-key=%s&secret-access-key=%s&force-path-style=true&region=us-west-2"
-	cloudDir    = "/tmp/cloud"
+	mockS3     = "s3://tmp/br-restore/%s/%s?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http://minio.pingcap.net:9000&force-path-style=true"
+	localMinio = "s3://brie/%s/%s?endpoint=http://192.168.56.102:9000"
+	s3Address  = "s3://pcloud2021/backups/%s/%s?access-key=%s&secret-access-key=%s&force-path-style=true&region=us-west-2"
+	cloudDir   = "/tmp/cloud"
 )
 
 func (m *Manager) getAccessKey() string {
@@ -69,7 +71,11 @@ func (m *Manager) DoBackup(pdAddr string, metadata spec.Metadata, us string) err
 	builder := backup.NewBackup(pdAddr)
 	builder.Storage(m.getS3Address(us, "full"))
 	b := backup.BR{Path: br, Version: ver}
-	return b.Execute(context.TODO(), *builder...)
+	proc := b.Execute(context.TODO(), *builder...)
+	proc.Trace.OnProgress(func(progress backup.Progress) {
+		fmt.Printf("%+v\n", progress)
+	})
+	return proc.Handle.Wait()
 }
 
 func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string) error {
@@ -86,18 +92,18 @@ func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string) er
 	// Do full restore
 	builder := backup.NewRestore(pdAddr)
 	builder.Storage(m.getS3Address(us, "full"))
-	b := backup.BR{Path: br, Version: ver, Wait: true}
+	b := backup.BR{Path: br, Version: ver}
 	fmt.Println(color.GreenString("start downloading..."))
-	err = b.Execute(context.TODO(), *builder...)
+	err = b.Execute(context.TODO(), *builder...).Handle.Wait()
 	if err != nil {
 		return err
 	}
 	// Do log restore
 	builder = backup.NewLogRestore(pdAddr)
 	builder.Storage(m.getS3Address(us, "inc"))
-	b = backup.BR{Path: br, Version: ver, Wait: true}
+	b = backup.BR{Path: br, Version: ver}
 	fmt.Println(color.GreenString("start incremental downloading..."))
-	return b.Execute(context.TODO(), *builder...)
+	return b.Execute(context.TODO(), *builder...).Handle.Wait()
 }
 
 func (m *Manager) StartsIncrementalBackup(pdAddr string, metadata spec.Metadata, us string) error {
@@ -169,9 +175,9 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	authDir := filepath.Join(cloudDir, authKey)
 	tokenFile := filepath.Join(authDir, "tokenFile")
 	var (
-		err error
-		token string
-	    clusterID string
+		err       error
+		token     string
+		clusterID string
 	)
 	if _, err = os.Stat(tokenFile); os.IsNotExist(err) {
 		// try get token from service

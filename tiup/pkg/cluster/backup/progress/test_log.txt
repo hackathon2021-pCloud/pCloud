@@ -1,0 +1,4 @@
+{"level":"INFO","time":"2022/01/04 20:59:15.162 +08:00","caller":"progress.go:134","message":"progress","step":"Full backup","progress":"92.71%","count":"89 / 96","speed":"? p/s","elapsed":"2m0s","remaining":"?"}
+{"level":"INFO","time":"2022/01/04 21:01:15.163 +08:00","caller":"progress.go:134","message":"progress","step":"Full backup","progress":"96.88%","count":"93 / 96","speed":"0 p/s","elapsed":"4m0s","remaining":"1m30s"}
+{"level":"INFO","time":"2022/01/04 21:01:22.673 +08:00","caller":"progress.go:134","message":"progress","step":"Full backup","progress":"100.00%","count":"96 / 96","speed":"1 p/s","elapsed":"4m8s","remaining":"4m8s"}
+{"level":"INFO","time":"2022/01/04 21:01:24.868 +08:00","caller":"progress.go:134","message":"progress","step":"Checksum","progress":"100.00%","count":"44 / 44","speed":"? p/s","elapsed":"2.2s","remaining":"2.2s"}

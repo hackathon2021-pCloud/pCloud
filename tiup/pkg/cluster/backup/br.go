@@ -3,6 +3,9 @@ package backup
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"io"
+	"os"
 	"os/exec"
 
 	"github.com/pingcap/tiup/pkg/utils"
@@ -11,22 +14,21 @@ import (
 type BR struct {
 	Path    string
 	Version utils.Version
-	Wait    bool
 }
 
 type BRBuilder []string
 
 func NewRestore(pdAddr string) *BRBuilder {
 	// ignore checksum for log restore
-	return &BRBuilder{"restore", "full", "-u", pdAddr, "--checksum=false"}
+	return &BRBuilder{"restore", "full", "-u", pdAddr, "--checksum=false", "--log-format", "json"}
 }
 
 func NewLogRestore(pdAddr string) *BRBuilder {
-	return &BRBuilder{"restore", "cdclog", "-u", pdAddr}
+	return &BRBuilder{"restore", "cdclog", "-u", pdAddr, "--log-format", "json"}
 }
 
 func NewBackup(pdAddr string) *BRBuilder {
-	return &BRBuilder{"backup", "full", "-u", pdAddr}
+	return &BRBuilder{"backup", "full", "-u", pdAddr, "--log-format", "json"}
 }
 
 func (builder *BRBuilder) Storage(s string) {
@@ -37,13 +39,24 @@ func (builder *BRBuilder) Build() []string {
 	return *builder
 }
 
-func (br *BR) Execute(ctx context.Context, args ...string) error {
+type BRProcess struct {
+	Trace  ProgressTracer
+	Handle *exec.Cmd
+}
+
+func (br *BR) Execute(ctx context.Context, args ...string) BRProcess {
 	cmd := exec.CommandContext(ctx, br.Path, args...)
-	if br.Wait {
-		return cmd.Run()
+	r, w := io.Pipe()
+	tr := TraceByLog(r)
+	cmd.Stdout = w
+	cmd.Stderr = os.Stderr
+	cmd.Env = []string{"AWS_ACCESS_KEY=root", "AWS_SECRET_KEY=a123456;", "BR_LOG_TO_TERM=1"}
+	fmt.Println("executing ", args)
+	cmd.Start()
+	return BRProcess{
+		Handle: cmd,
+		Trace:  tr,
 	}
-	// Don't wait
-	return cmd.Start()
 }
 
 type CdcCtl struct {
@@ -97,6 +110,5 @@ func (c *CdcCtl) Execute(ctx context.Context, args ...string) ([]byte, error) {
 		cmd := exec.CommandContext(ctx, c.Path, args...)
 		return cmd.Output()
 	}
-
 
 }
