@@ -69,7 +69,7 @@ func GetIncrementalBackup(changeFeedId string, pdAddr string) *CdcCtlBuilder {
 
 func (c *CdcCtl) Execute(ctx context.Context, args ...string) ([]byte, error) {
 	// use pipeline to avoid input yes in cdc ctl
-	c1 := exec.Command("echo Y")
+	c1 := exec.CommandContext(ctx, "echo", "Y")
 	c2 := exec.CommandContext(ctx, c.Path, args...)
 
 	c2.Stdin, _ = c1.StdoutPipe()
