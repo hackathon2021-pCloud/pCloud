@@ -16,6 +16,7 @@ package manager
 import (
 	"context"
 	"fmt"
+	"github.com/fatih/color"
 	"io/ioutil"
 	"path"
 	"path/filepath"
@@ -177,7 +178,7 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	if len(clusterID) != 0 {
 		fmt.Println("this cluster has enable pitr before!")
 	} else {
-		fmt.Println("please login pCloud service( " + api.GetRegisterTokenUrl(token) + " ) and paste unique token")
+		fmt.Println("please login pCloud service(" + api.GetRegisterTokenUrl(token) + ") and paste unique token")
 		fmt.Print("unique token: ")
 		fmt.Scanf("%s", &clusterID)
 		if len(clusterID) == 0 {
@@ -197,7 +198,7 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("pitr to cloud enabled! you can check the cluster in ", api.HOST)
+	fmt.Println("pitr to cloud enabled! you can check the cluster in ", color.BlueString(api.HOST))
 	return nil
 }
 

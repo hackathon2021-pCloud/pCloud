@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/fatih/color"
 	"io/ioutil"
 	"net/http"
 )
@@ -15,7 +16,7 @@ func GetClusterInfoUrl(authKey string, clusterID string) string {
 }
 
 func GetRegisterTokenUrl(token string) string {
-	return fmt.Sprintf("%s/register?register_token=%s", HOST, token)
+	return color.BlueString(fmt.Sprintf("%s/register?register_token=%s", HOST, token))
 }
 
 func GetRegisterToken(authKey string) (string, error) {
