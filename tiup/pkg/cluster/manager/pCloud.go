@@ -15,6 +15,8 @@ package manager
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/base64"
 	"fmt"
 	"github.com/fatih/color"
 	"io/ioutil"
@@ -25,7 +27,6 @@ import (
 
 	"github.com/pingcap/tiup/pkg/cluster/api"
 
-	"github.com/google/uuid"
 	"github.com/pingcap/errors"
 	"github.com/pingcap/tiup/pkg/cluster/backup"
 	"github.com/pingcap/tiup/pkg/cluster/clusterutil"
@@ -147,13 +148,17 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	if !cdcExists {
 		return errors.New("cluster doesn't have any cdc server")
 	}
-	uuid, _ := uuid.NewUUID()
-	us := uuid.String()
-	authDir := filepath.Join(cloudDir, us)
+	// authKey is the validation code for one cluster.
+	// the same cluster has the same authKey.
+	hasher := sha1.New()
+	hasher.Write([]byte(name))
+	sha := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
+	authKey := sha
+	authDir := filepath.Join(cloudDir, authKey)
 	tokenFile := filepath.Join(authDir, "tokenFile")
 	if _, err := os.Stat(tokenFile); os.IsNotExist(err) {
 		// try get token from service
-		token, err := api.GetRegisterToken(us)
+		token, err := api.GetRegisterToken(authKey)
 		if err != nil {
 			return err
 		}
@@ -167,7 +172,7 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	if err != nil {
 		return err
 	}
-	clusterFile := filepath.Join(cloudDir, "cloudFile")
+	clusterFile := filepath.Join(authDir, "cloudFile")
 	// try get cluster from file
 	var clusterID string
 	if _, err := os.Stat(clusterFile); os.IsNotExist(err) {
@@ -193,7 +198,7 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	if err != nil {
 		return err
 	}
-	err = m.StartsIncrementalBackup(pdHost, metadata, us)
+	err = m.StartsIncrementalBackup(pdHost, metadata, clusterID)
 	if err != nil {
 		return err
 	}
