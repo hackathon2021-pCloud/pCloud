@@ -38,8 +38,21 @@ import (
 
 const (
 	mockS3      = "s3://tmp/br-restore/%s/%s?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http://minio.pingcap.net:9000&force-path-style=true"
+	s3Address   = "s3://pcloud2021/backups/%s/%s?access-key=%s&secret-access-key=%s&force-path-style=true&region=us-west-2"
 	cloudDir    = "/tmp/cloud"
 )
+
+func (m *Manager) getAccessKey() string {
+	return os.Getenv("ACCESS_KEY")
+}
+
+func (m *Manager) getSecretAccessKey() string {
+	return os.Getenv("SECRET_ACCESS_KEY")
+}
+
+func (m *Manager) getS3Address(s, t string) string {
+	return fmt.Sprintf(s3Address, s, t, m.getAccessKey(), m.getSecretAccessKey())
+}
 
 func (m *Manager) DoBackup(pdAddr string, metadata spec.Metadata, us string) error {
 	env := environment.GlobalEnv()
@@ -54,8 +67,7 @@ func (m *Manager) DoBackup(pdAddr string, metadata spec.Metadata, us string) err
 	}
 
 	builder := backup.NewBackup(pdAddr)
-	s := fmt.Sprintf(mockS3, us, "full")
-	builder.Storage(s)
+	builder.Storage(m.getS3Address(us, "full"))
 	b := backup.BR{Path: br, Version: ver}
 	return b.Execute(context.TODO(), *builder...)
 }
@@ -73,8 +85,7 @@ func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string) er
 	}
 	// Do full restore
 	builder := backup.NewRestore(pdAddr)
-	s := fmt.Sprintf(mockS3, us, "full")
-	builder.Storage(s)
+	builder.Storage(m.getS3Address(us, "full"))
 	b := backup.BR{Path: br, Version: ver}
 	err = b.Execute(context.TODO(), *builder...)
 	if err != nil {
@@ -82,8 +93,7 @@ func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string) er
 	}
 	// Do log restore
 	builder = backup.NewLogRestore(pdAddr)
-	s = fmt.Sprintf(mockS3, us, "inc")
-	builder.Storage(s)
+	builder.Storage(m.getS3Address(us, "inc"))
 	b = backup.BR{Path: br, Version: ver}
 	return b.Execute(context.TODO(), *builder...)
 }
@@ -109,9 +119,9 @@ func (m *Manager) StartsIncrementalBackup(pdAddr string, metadata spec.Metadata,
 		// changefeed exists in cdc
 		return errors.New("backup to cloud is enabled already")
 	}
+	c.PipeYes = true
 	builder = backup.NewIncrementalBackup(us, pdAddr)
-	s := fmt.Sprintf(mockS3, us, "inc")
-	builder.Storage(s)
+	builder.Storage(m.getS3Address(us, "inc"))
 	out, err = c.Execute(context.TODO(), *builder...)
 	if err != nil {
 		return err
@@ -195,6 +205,18 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 		if err != nil {
 			return err
 		}
+		fmt.Println(color.GreenString("Starting streaming.."))
+		err = m.StartsIncrementalBackup(pdHost, metadata, clusterID)
+		if err != nil {
+			return err
+		}
+		fmt.Println(color.GreenString("Starting upload.."))
+		err = m.DoBackup(pdHost, metadata, clusterID)
+		if err != nil {
+			return err
+		}
+
+		fmt.Println("pitr to cloud enabled! you can check the progress in ", color.BlueString(api.HOST))
 	} else {
 		clusterID, err = m.GetFromFile(clusterFile)
 		if err != nil {
@@ -202,16 +224,6 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 		}
 		fmt.Println("this cluster(ID:"+color.YellowString(clusterID)+") has enable pitr before! please check in ", color.BlueString(api.HOST))
 	}
-
-	err = m.DoBackup(pdHost, metadata, clusterID)
-	if err != nil {
-		return err
-	}
-	err = m.StartsIncrementalBackup(pdHost, metadata, clusterID)
-	if err != nil {
-		return err
-	}
-	fmt.Println("pitr to cloud enabled! you can check the cluster in ", color.BlueString(api.HOST))
 	return nil
 }
 

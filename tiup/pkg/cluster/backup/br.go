@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"bytes"
 	"context"
 	"os/exec"
 
@@ -38,15 +39,15 @@ func (br *BR) Execute(ctx context.Context, args ...string) error {
 	cmd := exec.CommandContext(ctx, br.Path, args...)
 	// cmd.Stdout = os.Stdout
 	// cmd.Stderr = os.Stderr
-	cmd.Env = []string{"AWS_ACCESS_KEY=root", "AWS_SECRET_KEY=a123456;"}
-	cmd.Start()
-	return cmd.Wait()
+	// Don't wait
+	return cmd.Start()
 }
 
 type CdcCtl struct {
 	changeFeedId string
 	Path         string
 	Version      utils.Version
+	PipeYes      bool
 }
 
 type CdcCtlBuilder []string
@@ -68,6 +69,31 @@ func GetIncrementalBackup(changeFeedId string, pdAddr string) *CdcCtlBuilder {
 }
 
 func (c *CdcCtl) Execute(ctx context.Context, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, c.Path, args...)
-	return cmd.Output()
+	// use pipeline to avoid input yes in cdc ctl
+	if c.PipeYes {
+		c1 := exec.CommandContext(ctx, "echo", "Y")
+		c2 := exec.CommandContext(ctx, c.Path, args...)
+
+		c2.Stdin, _ = c1.StdoutPipe()
+		var outb bytes.Buffer
+		c2.Stdout = &outb
+		err := c2.Start()
+		if err != nil {
+			return nil, err
+		}
+		err = c1.Run()
+		if err != nil {
+			return nil, err
+		}
+		err = c2.Wait()
+		if err != nil {
+			return nil, err
+		}
+		return outb.Bytes(), nil
+	} else {
+		cmd := exec.CommandContext(ctx, c.Path, args...)
+		return cmd.Output()
+	}
+
+
 }
