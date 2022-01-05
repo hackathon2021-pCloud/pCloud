@@ -16,9 +16,12 @@ package manager
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/pingcap/tiup/pkg/cluster/api"
 
 	"github.com/google/uuid"
 	"github.com/pingcap/errors"
@@ -31,7 +34,10 @@ import (
 )
 
 const (
-	mockS3 = "s3://tmp/br-restore/%s/%s?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http://minio.pingcap.net:9000&force-path-style=true"
+	mockS3      = "s3://tmp/br-restore/%s/%s?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http://minio.pingcap.net:9000&force-path-style=true"
+	tokenFile   = "/tmp/tokenFile"
+	authFile    = "/tmp/authFile"
+	clusterFile = "/tmp/clusterFile"
 )
 
 func (m *Manager) DoBackup(pdAddr string, metadata spec.Metadata, us string) error {
@@ -41,7 +47,6 @@ func (m *Manager) DoBackup(pdAddr string, metadata spec.Metadata, us string) err
 	if err != nil {
 		return err
 	}
-	fmt.Printf("using BR version %s\n", ver)
 	br, err := env.BinaryPath("br", ver)
 	if err != nil {
 		return err
@@ -61,7 +66,6 @@ func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string) er
 	if err != nil {
 		return err
 	}
-	fmt.Printf("using BR version %s\n", ver)
 	br, err := env.BinaryPath("br", ver)
 	if err != nil {
 		return err
@@ -108,7 +112,6 @@ func (m *Manager) StartsIncrementalBackup(pdAddr string, metadata spec.Metadata,
 	s := fmt.Sprintf(mockS3, us, "inc")
 	builder.Storage(s)
 	out, err = c.Execute(context.TODO(), *builder...)
-	fmt.Println("out", string(out))
 	if err != nil {
 		return err
 	}
@@ -144,15 +147,74 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	if !cdcExists {
 		return errors.New("cluster doesn't have any cdc server")
 	}
-	// TODO get uuid from service
 	uuid, _ := uuid.NewUUID()
 	us := uuid.String()
-	fmt.Println("unique string", us)
-
-	if err := m.DoBackup(pdHost, metadata, us); err != nil {
+	err := m.SaveToFile(authFile, us)
+	if err != nil {
 		return err
 	}
-	return m.StartsIncrementalBackup(pdHost, metadata, us)
+	// try get token from file
+	token, err := m.GetFromFile(tokenFile)
+	if err != nil {
+		return err
+	}
+	// cannot get token from file
+	if len(token) == 0 {
+		token, err = api.GetRegisterToken(us)
+		if err != nil {
+			return err
+		}
+		err = m.SaveToFile(tokenFile, token)
+		if err != nil {
+			return err
+		}
+	}
+	// try get cluster from file
+	clusterID, err := m.GetFromFile(clusterFile)
+	if err != nil {
+		return err
+	}
+	if len(clusterID) != 0 {
+		fmt.Println("this cluster has enable pitr before!")
+	} else {
+		fmt.Println("please login pCloud service( " + api.GetRegisterTokenUrl(token) + " ) and paste unique token")
+		fmt.Print("unique token: ")
+		fmt.Scanf("%s", &clusterID)
+		if len(clusterID) == 0 {
+			return errors.New("input unique token is invalid")
+		}
+		err = m.SaveToFile(clusterFile, clusterID)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = m.DoBackup(pdHost, metadata, clusterID)
+	if err != nil {
+		return err
+	}
+	err = m.StartsIncrementalBackup(pdHost, metadata, us)
+	if err != nil {
+		return err
+	}
+	fmt.Println("pitr to cloud enabled! you can check the cluster in ", api.HOST)
+	return nil
+}
+
+func (m *Manager) GetFromFile(file string) (string, error) {
+	content, err := ioutil.ReadFile(file)
+	if err != nil {
+		return "", err
+	}
+	return string(content), nil
+}
+
+func (m *Manager) SaveToFile(file string, content string) error {
+	err := ioutil.WriteFile(file, []byte(content), 0644)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // RestoreFromCloud start a full backup and log backup from cloud.
