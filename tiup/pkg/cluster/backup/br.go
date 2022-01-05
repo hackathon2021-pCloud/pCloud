@@ -47,6 +47,7 @@ type CdcCtl struct {
 	changeFeedId string
 	Path         string
 	Version      utils.Version
+	PipeYes      bool
 }
 
 type CdcCtlBuilder []string
@@ -69,24 +70,30 @@ func GetIncrementalBackup(changeFeedId string, pdAddr string) *CdcCtlBuilder {
 
 func (c *CdcCtl) Execute(ctx context.Context, args ...string) ([]byte, error) {
 	// use pipeline to avoid input yes in cdc ctl
-	c1 := exec.CommandContext(ctx, "echo", "Y")
-	c2 := exec.CommandContext(ctx, c.Path, args...)
+	if c.PipeYes {
+		c1 := exec.CommandContext(ctx, "echo", "Y")
+		c2 := exec.CommandContext(ctx, c.Path, args...)
 
-	c2.Stdin, _ = c1.StdoutPipe()
-	var outb bytes.Buffer
-	c2.Stdout = &outb
-	err := c2.Start()
-	if err != nil {
-		return nil, err
-	}
-	err = c1.Run()
-	if err != nil {
-		return nil, err
-	}
-	err = c2.Wait()
-	if err != nil {
-		return nil, err
+		c2.Stdin, _ = c1.StdoutPipe()
+		var outb bytes.Buffer
+		c2.Stdout = &outb
+		err := c2.Start()
+		if err != nil {
+			return nil, err
+		}
+		err = c1.Run()
+		if err != nil {
+			return nil, err
+		}
+		err = c2.Wait()
+		if err != nil {
+			return nil, err
+		}
+		return outb.Bytes(), nil
+	} else {
+		cmd := exec.CommandContext(ctx, c.Path, args...)
+		return cmd.Output()
 	}
 
-	return outb.Bytes(), nil
+
 }

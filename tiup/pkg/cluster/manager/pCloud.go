@@ -119,6 +119,7 @@ func (m *Manager) StartsIncrementalBackup(pdAddr string, metadata spec.Metadata,
 		// changefeed exists in cdc
 		return errors.New("backup to cloud is enabled already")
 	}
+	c.PipeYes = true
 	builder = backup.NewIncrementalBackup(us, pdAddr)
 	builder.Storage(m.getS3Address(us, "inc"))
 	out, err = c.Execute(context.TODO(), *builder...)
