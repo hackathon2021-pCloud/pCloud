@@ -3,7 +3,6 @@ package backup
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"os/exec"
 
 	"github.com/pingcap/tiup/pkg/utils"
@@ -40,7 +39,6 @@ func (builder *BRBuilder) Build() []string {
 
 func (br *BR) Execute(ctx context.Context, args ...string) error {
 	cmd := exec.CommandContext(ctx, br.Path, args...)
-	fmt.Println(br.Path, args)
 	if br.Wait {
 		return cmd.Run()
 	}
