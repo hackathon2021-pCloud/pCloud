@@ -86,7 +86,8 @@ func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string) er
 	// Do full restore
 	builder := backup.NewRestore(pdAddr)
 	builder.Storage(m.getS3Address(us, "full"))
-	b := backup.BR{Path: br, Version: ver}
+	b := backup.BR{Path: br, Version: ver, Wait: true}
+	fmt.Println(color.GreenString("start downloading..."))
 	err = b.Execute(context.TODO(), *builder...)
 	if err != nil {
 		return err
@@ -94,7 +95,8 @@ func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string) er
 	// Do log restore
 	builder = backup.NewLogRestore(pdAddr)
 	builder.Storage(m.getS3Address(us, "inc"))
-	b = backup.BR{Path: br, Version: ver}
+	b = backup.BR{Path: br, Version: ver, Wait: true}
+	fmt.Println(color.GreenString("start incremental downloading..."))
 	return b.Execute(context.TODO(), *builder...)
 }
 

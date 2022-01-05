@@ -11,12 +11,14 @@ import (
 type BR struct {
 	Path    string
 	Version utils.Version
+	Wait    bool
 }
 
 type BRBuilder []string
 
 func NewRestore(pdAddr string) *BRBuilder {
-	return &BRBuilder{"restore", "full", "-u", pdAddr}
+	// ignore checksum for log restore
+	return &BRBuilder{"restore", "full", "-u", pdAddr, "--checksum=false"}
 }
 
 func NewLogRestore(pdAddr string) *BRBuilder {
@@ -37,8 +39,9 @@ func (builder *BRBuilder) Build() []string {
 
 func (br *BR) Execute(ctx context.Context, args ...string) error {
 	cmd := exec.CommandContext(ctx, br.Path, args...)
-	// cmd.Stdout = os.Stdout
-	// cmd.Stderr = os.Stderr
+	if br.Wait {
+		return cmd.Run()
+	}
 	// Don't wait
 	return cmd.Start()
 }
