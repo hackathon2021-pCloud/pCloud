@@ -17,7 +17,8 @@ type BR struct {
 type BRBuilder []string
 
 func NewRestore(pdAddr string) *BRBuilder {
-	return &BRBuilder{"restore", "full", "-u", pdAddr}
+	// ignore checksum for log restore
+	return &BRBuilder{"restore", "full", "-u", pdAddr, "--checksum", "false"}
 }
 
 func NewLogRestore(pdAddr string) *BRBuilder {
