@@ -17,16 +17,21 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/user"
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/fatih/color"
+	"go.uber.org/multierr"
 
 	"github.com/pingcap/tiup/pkg/cluster/api"
+	"github.com/pingcap/tiup/pkg/tui"
 
 	"github.com/pingcap/errors"
 	"github.com/pingcap/tiup/pkg/cluster/backup"
@@ -56,10 +61,10 @@ func (m *Manager) getS3Address(s, t string) string {
 	return fmt.Sprintf(s3Address, s, t, m.getAccessKey(), m.getSecretAccessKey())
 }
 
-func (m *Manager) DoBackup(pdAddr string, metadata spec.Metadata, us string) error {
+func (m *Manager) DoBackup(info ClusterInfo, us string) error {
 	env := environment.GlobalEnv()
 
-	ver, err := env.DownloadComponentIfMissing("br", utils.Version(metadata.GetBaseMeta().Version))
+	ver, err := env.DownloadComponentIfMissing("br", utils.Version(info.Meta.GetBaseMeta().Version))
 	if err != nil {
 		return err
 	}
@@ -68,13 +73,23 @@ func (m *Manager) DoBackup(pdAddr string, metadata spec.Metadata, us string) err
 		return err
 	}
 
-	builder := backup.NewBackup(pdAddr)
-	builder.Storage(m.getS3Address(us, "full"))
+	builder := backup.NewBackup(info.PDAddr[0])
+	backupURL := m.getS3Address(us, "full")
+	builder.Storage(backupURL)
 	b := backup.BR{Path: br, Version: ver}
 	proc := b.Execute(context.TODO(), *builder...)
 	proc.Trace.OnProgress(func(progress backup.Progress) {
-		fmt.Printf("%+v\n", progress)
+		fmt.Println("Your progress: ", color.BlueString("%.2f%%", progress.Precent*100))
+		if err := api.CreateProgress(api.CreateProgressRequest{
+			ClusterID: us,
+			AuthKey:   authKeyForCluster(info.Name),
+			Progress:  int(progress.Precent * 100),
+			BackupURL: backupURL,
+		}); err != nil {
+			fmt.Println("failed to upload progress", color.RedString("%s", err))
+		}
 	})
+	proc.Trace.Init()
 	return proc.Handle.Wait()
 }
 
@@ -94,8 +109,12 @@ func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string) er
 	builder.Storage(m.getS3Address(us, "full"))
 	b := backup.BR{Path: br, Version: ver}
 	fmt.Println(color.GreenString("start downloading..."))
-	err = b.Execute(context.TODO(), *builder...).Handle.Wait()
-	if err != nil {
+	cmd := b.Execute(context.TODO(), *builder...)
+	cmd.Trace.OnProgress(func(progress backup.Progress) {
+		fmt.Println(color.HiGreenString("%+v", progress))
+	})
+
+	if err := cmd.Handle.Wait(); err != nil {
 		return err
 	}
 	// Do log restore
@@ -106,18 +125,26 @@ func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string) er
 	return b.Execute(context.TODO(), *builder...).Handle.Wait()
 }
 
-func (m *Manager) StartsIncrementalBackup(pdAddr string, metadata spec.Metadata, us string) error {
+func (m *Manager) GetCDC(metadata spec.Metadata) (*backup.CdcCtl, error) {
 	env := environment.GlobalEnv()
 	ver, err := env.DownloadComponentIfMissing("ctl", utils.Version(metadata.GetBaseMeta().Version))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	ctl, err := env.BinaryPath("ctl", ver)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	cdcCtl := path.Join(filepath.Dir(ctl), "cdc")
-	c := backup.CdcCtl{Path: cdcCtl, Version: ver}
+	c := &backup.CdcCtl{Path: cdcCtl, Version: ver}
+	return c, nil
+}
+
+func (m *Manager) StartsIncrementalBackup(pdAddr string, metadata spec.Metadata, us string) error {
+	c, err := m.GetCDC(metadata)
+	if err != nil {
+		return err
+	}
 	builder := backup.GetIncrementalBackup(us, pdAddr)
 	out, err := c.Execute(context.TODO(), *builder...)
 	if err != nil && !strings.Contains(string(out), "ErrChangeFeedNotExists") {
@@ -137,34 +164,121 @@ func (m *Manager) StartsIncrementalBackup(pdAddr string, metadata spec.Metadata,
 	return nil
 }
 
+func authKeyForCluster(name string) string {
+	hasher := sha1.New()
+	hasher.Write([]byte(name))
+	sha := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
+	return sha
+}
+
+// TODO: interface for making checkpoint
+// TODO: restore from checkpoint
+func (m *Manager) SetCheckpoint(name string, skipConfirm bool) error {
+	info := m.getClusterInfo(name)
+	if err := multierr.Append(info.AssertCDCExists(), info.AssertPDExists()); err != nil {
+		return err
+	}
+	clusterFile := path.Join(cloudDir, authKeyForCluster(name), "cloudFile")
+	clusterID, err := os.ReadFile(clusterFile)
+	if err != nil {
+		return err
+	}
+	cf := backup.GetIncrementalBackup(string(clusterID), info.PDAddr[0])
+	cdc, err := m.GetCDC(info.Meta)
+	out, err := cdc.Execute(context.TODO(), cf.Build()...)
+	if err != nil {
+		return err
+	}
+
+	type Stat struct {
+		Checkpoint uint64 `json:"checkpoint-ts"`
+	}
+	type ChangeFeed struct {
+		Status Stat `json:"status"`
+	}
+	cfs := ChangeFeed{}
+	if err := json.Unmarshal(out, &cfs); err != nil {
+		return err
+	}
+	fmt.Println("Your current checkpoint ts is:", color.HiBlueString("%d", cfs.Status.Checkpoint))
+	phyTime := cfs.Status.Checkpoint >> 18
+	t := time.UnixMilli(int64(phyTime))
+	fmt.Println("The logic time is:", color.HiBlueString("%s", t))
+	if !skipConfirm {
+		ok, _ := tui.PromptForConfirmYes("Create the checkpoint? ")
+		if !ok {
+			return nil
+		}
+	}
+	usr, err := user.Current()
+	userName := usr.Username
+	if err != nil {
+		userName = "UNKNOWN"
+	}
+	cp, err := api.CreateCheckpoint(api.CreateCheckpointRequest{
+		AuthKey:        authKeyForCluster(info.Name),
+		ClusterID:      string(clusterID),
+		UploadStatus:   "finish",
+		UploadProgress: 100,
+		CheckpointTime: int64(phyTime),
+		URL:            "s3://tbd",
+		BackupSize:     42,
+		Operator:       userName,
+	})
+	if err != nil {
+		return errors.Annotatef(err, "failed to create checkpoint")
+	}
+	fmt.Println("Your checkpoint has been created with ID:", color.HiBlackString("%s", cp))
+	fmt.Println("Check it at:", color.GreenString("%s/cluster?id=%s", api.HOST, clusterID))
+	return nil
+}
+
+type ClusterInfo struct {
+	Name      string
+	PDAddr    []string
+	CDCExists bool
+	Meta      spec.Metadata
+}
+
+func (c *ClusterInfo) AssertPDExists() error {
+	if len(c.PDAddr) == 0 {
+		return errors.New("cluster doesn't find pd server")
+	}
+	return nil
+}
+
+func (c *ClusterInfo) AssertCDCExists() error {
+	if !c.CDCExists {
+		return errors.New("cluster doesn't find cdc server")
+	}
+	return nil
+}
+
+func (m *Manager) getClusterInfo(cluster string) ClusterInfo {
+	metadata, _ := m.meta(cluster)
+	topo := metadata.GetTopology()
+
+	info := ClusterInfo{Meta: metadata, Name: cluster}
+	topo.IterInstance(func(instance spec.Instance) {
+		if instance.Role() == "cdc" {
+			info.CDCExists = true
+		}
+		if instance.Role() == "pd" {
+			info.PDAddr = append(info.PDAddr, fmt.Sprintf("http://%s:%d", instance.GetHost(), instance.GetPort()))
+		}
+	})
+	return info
+}
+
 // Backup2Cloud start full backup and log backup to cloud.
 func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	if err := clusterutil.ValidateClusterNameOrError(name); err != nil {
 		return err
 	}
 
-	metadata, _ := m.meta(name)
-	topo := metadata.GetTopology()
-	// 1. start interact with services.
-	// 2. use br to do a full backup.
-	// 3. use cdc ctl/api to create a changefeed to s3.
-	// 4. tell user backup finished
-
-	var cdcExists bool
-	var pdHost string
-	topo.IterInstance(func(instance spec.Instance) {
-		if instance.Role() == "cdc" {
-			cdcExists = true
-		}
-		if instance.Role() == "pd" {
-			pdHost = fmt.Sprintf("http://%s:%d", instance.GetHost(), instance.GetPort())
-		}
-	})
-	if len(pdHost) == 0 {
-		return errors.New("cluster doesn't find pd server")
-	}
-	if !cdcExists {
-		return errors.New("cluster doesn't have any cdc server")
+	info := m.getClusterInfo(name)
+	if err := multierr.Append(info.AssertCDCExists(), info.AssertPDExists()); err != nil {
+		return err
 	}
 	// authKey is the validation code for one cluster.
 	// the same cluster has the same authKey.
@@ -181,7 +295,7 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	)
 	if _, err = os.Stat(tokenFile); os.IsNotExist(err) {
 		// try get token from service
-		err = os.MkdirAll(authDir, 0644)
+		err = os.MkdirAll(authDir, 0755)
 		if err != nil {
 			return err
 		}
@@ -213,13 +327,13 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println(color.GreenString("Starting streaming.."))
-		err = m.StartsIncrementalBackup(pdHost, metadata, clusterID)
+		fmt.Println(color.GreenString("Starting upload.."))
+		err = m.DoBackup(info, clusterID)
 		if err != nil {
 			return err
 		}
-		fmt.Println(color.GreenString("Starting upload.."))
-		err = m.DoBackup(pdHost, metadata, clusterID)
+		fmt.Println(color.GreenString("Starting streaming.."))
+		err = m.StartsIncrementalBackup(info.PDAddr[0], info.Meta, clusterID)
 		if err != nil {
 			return err
 		}
@@ -252,25 +366,37 @@ func (m *Manager) SaveToFile(file string, content string) error {
 }
 
 // RestoreFromCloud start a full backup and log backup from cloud.
-func (m *Manager) RestoreFromCloud(name string, us string, opt operator.Options) error {
+func (m *Manager) RestoreFromCloud(name string) error {
 	if err := clusterutil.ValidateClusterNameOrError(name); err != nil {
 		return err
 	}
 
-	metadata, _ := m.meta(name)
-	topo := metadata.GetTopology()
 	// 1. start interact with services.
 	// 2. use br to do a full restore.
 	// 3. use br to do a cdc log restore.
 	// 4. tell user restore finished and the costs.
-	var pdHost string
-	topo.IterInstance(func(instance spec.Instance) {
-		if instance.Role() == "pd" {
-			pdHost = fmt.Sprintf("http://%s:%d", instance.GetHost(), instance.GetPort())
-		}
-	})
-	if len(pdHost) == 0 {
-		return errors.New("cluster doesn't have any cdc server")
+	info := m.getClusterInfo(name)
+	if err := info.AssertPDExists(); err != nil {
+		return err
 	}
-	return m.DoRestore(pdHost, metadata, us)
+	clusterFile := path.Join(cloudDir, authKeyForCluster(name), "cloudFile")
+	clusterID, err := os.ReadFile(clusterFile)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Hint: you can generate a checkpoint from", color.YellowString("%s/cluster?id=%s", api.HOST, clusterID))
+	token := tui.Prompt("Please input the checkpoint token generated:")
+
+	// TODO use the token to restore to the checkpoint.
+	cp, err := api.GetCheckpoint(token)
+	if err != nil {
+		return err
+	}
+	// TODO hint the cluster name here.
+	fmt.Println("The checkpoint is at", color.BlueString("%s", time.UnixMilli(cp.CheckpointTime)))
+	ok, _ := tui.PromptForConfirmYes("Continue? ")
+	if !ok {
+		return nil
+	}
+	return m.DoRestore(info.PDAddr[0], info.Meta, cp.ClusterID)
 }

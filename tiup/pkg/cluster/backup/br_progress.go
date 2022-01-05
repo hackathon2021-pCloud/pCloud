@@ -21,6 +21,7 @@ type Progress struct {
 type ProgressTracer interface {
 	OnProgress(func(progress Progress))
 	Stop() error
+	Init()
 }
 
 // LogProgressTracer traces progress of BR via the log.
@@ -35,6 +36,14 @@ func TraceByLog(logStream io.ReadCloser) ProgressTracer {
 	}
 	go lt.ReadLoop()
 	return lt
+}
+
+func (lt *LogProgressTracer) Init() {
+	go lt.SendProgress(&Progress{
+		RecordAt: time.Now(),
+		// Emm... The progress cannot be zero or we would fail to upload the status.
+		Precent: 0.01,
+	})
 }
 
 type BRProgress struct {
@@ -60,7 +69,8 @@ func (prog *BRProgress) ToProgress() *Progress {
 		log.Warnf("failed to parse date (err = %s)", err)
 		return nil
 	}
-	if prog.Step == "Checksum" {
+	// MAGIC: backup contains a checksum step.
+	if prog.Step == "Checksum" || strings.Contains(strings.ToLower(prog.Step), "restore") {
 		result.Precent /= 100.0
 	} else {
 		result.Precent /= 200.0
