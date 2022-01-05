@@ -200,7 +200,7 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println("this cluster(ID:"+color.WhiteString(clusterID)+") has enable pitr before! please check in ", color.BlueString(api.HOST))
+		fmt.Println("this cluster(ID:"+color.YellowString(clusterID)+") has enable pitr before! please check in ", color.BlueString(api.HOST))
 	}
 
 	err = m.DoBackup(pdHost, metadata, clusterID)
