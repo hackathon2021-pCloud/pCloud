@@ -38,7 +38,8 @@ func (br *BR) Execute(ctx context.Context, args ...string) error {
 	cmd := exec.CommandContext(ctx, br.Path, args...)
 	// cmd.Stdout = os.Stdout
 	// cmd.Stderr = os.Stderr
-	return cmd.Run()
+	// Don't wait
+	return cmd.Start()
 }
 
 type CdcCtl struct {
