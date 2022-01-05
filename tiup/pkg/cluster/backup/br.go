@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"bytes"
 	"context"
 	"os/exec"
 
@@ -51,7 +52,7 @@ type CdcCtl struct {
 type CdcCtlBuilder []string
 
 func NewIncrementalBackup(changeFeedId string, pdAddr string) *CdcCtlBuilder {
-	return &CdcCtlBuilder{"echo", "Y", "|", "cli", "changefeed", "create", "--pd", pdAddr, "--changefeed-id", changeFeedId}
+	return &CdcCtlBuilder{"cli", "changefeed", "create", "--pd", pdAddr, "--changefeed-id", changeFeedId}
 }
 
 func (builder *CdcCtlBuilder) Storage(s string) {
@@ -67,6 +68,25 @@ func GetIncrementalBackup(changeFeedId string, pdAddr string) *CdcCtlBuilder {
 }
 
 func (c *CdcCtl) Execute(ctx context.Context, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, c.Path, args...)
-	return cmd.Output()
+	// use pipeline to avoid input yes in cdc ctl
+	c1 := exec.Command("echo Y")
+	c2 := exec.CommandContext(ctx, c.Path, args...)
+
+	c2.Stdin, _ = c1.StdoutPipe()
+	var outb bytes.Buffer
+	c2.Stdout = &outb
+	err := c2.Start()
+	if err != nil {
+		return nil, err
+	}
+	err = c1.Run()
+	if err != nil {
+		return nil, err
+	}
+	err = c2.Wait()
+	if err != nil {
+		return nil, err
+	}
+
+	return outb.Bytes(), nil
 }
