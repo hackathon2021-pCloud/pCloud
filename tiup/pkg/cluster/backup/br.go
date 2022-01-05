@@ -2,6 +2,7 @@ package backup
 
 import (
 	"context"
+	"os"
 	"os/exec"
 
 	"github.com/pingcap/tiup/pkg/utils"
@@ -38,6 +39,7 @@ func (br *BR) Execute(ctx context.Context, args ...string) error {
 	cmd := exec.CommandContext(ctx, br.Path, args...)
 	// cmd.Stdout = os.Stdout
 	// cmd.Stderr = os.Stderr
+	os.Getenv("AWS_ACCESS_KEY")
 	cmd.Env = []string{"AWS_ACCESS_KEY=root", "AWS_SECRET_KEY=a123456;"}
 	cmd.Start()
 	return cmd.Wait()
