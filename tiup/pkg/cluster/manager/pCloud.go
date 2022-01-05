@@ -125,6 +125,7 @@ func (m *Manager) StartsIncrementalBackup(pdAddr string, metadata spec.Metadata,
 	if err != nil {
 		return err
 	}
+	fmt.Println("out:", out)
 	return nil
 }
 
@@ -204,7 +205,7 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println(color.GreenString("Starting.."))
+		fmt.Println(color.GreenString("Starting upload.."))
 		err = m.DoBackup(pdHost, metadata, clusterID)
 		if err != nil {
 			return err
