@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/fatih/color"
 	"io/ioutil"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -36,9 +37,7 @@ import (
 
 const (
 	mockS3      = "s3://tmp/br-restore/%s/%s?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http://minio.pingcap.net:9000&force-path-style=true"
-	tokenFile   = "/tmp/tokenFile"
-	authFile    = "/tmp/authFile"
-	clusterFile = "/tmp/clusterFile"
+	cloudDir    = "/tmp/cloud"
 )
 
 func (m *Manager) DoBackup(pdAddr string, metadata spec.Metadata, us string) error {
@@ -150,18 +149,11 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 	}
 	uuid, _ := uuid.NewUUID()
 	us := uuid.String()
-	err := m.SaveToFile(authFile, us)
-	if err != nil {
-		return err
-	}
-	// try get token from file
-	token, err := m.GetFromFile(tokenFile)
-	if err != nil {
-		return err
-	}
-	// cannot get token from file
-	if len(token) == 0 {
-		token, err = api.GetRegisterToken(us)
+	authDir := filepath.Join(cloudDir, us)
+	tokenFile := filepath.Join(authDir, "tokenFile")
+	if _, err := os.Stat(tokenFile); os.IsNotExist(err) {
+		// try get token from service
+		token, err := api.GetRegisterToken(us)
 		if err != nil {
 			return err
 		}
@@ -170,14 +162,15 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 			return err
 		}
 	}
-	// try get cluster from file
-	clusterID, err := m.GetFromFile(clusterFile)
+	token, err := m.GetFromFile(tokenFile)
+	// cannot get token from file
 	if err != nil {
 		return err
 	}
-	if len(clusterID) != 0 {
-		fmt.Println("this cluster has enable pitr before!")
-	} else {
+	clusterFile := filepath.Join(cloudDir, "cloudFile")
+	// try get cluster from file
+	var clusterID string
+	if _, err := os.Stat(clusterFile); os.IsNotExist(err) {
 		fmt.Println("please login pCloud service(" + api.GetRegisterTokenUrl(token) + ") and paste unique token")
 		fmt.Print("unique token: ")
 		fmt.Scanf("%s", &clusterID)
@@ -188,6 +181,12 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 		if err != nil {
 			return err
 		}
+	} else {
+		clusterID, err = m.GetFromFile(clusterFile)
+		if err != nil {
+			return err
+		}
+		fmt.Println("this cluster(ID:"+color.WhiteString(clusterID)+") has enable pitr before! please check in ", color.BlueString(api.HOST))
 	}
 
 	err = m.DoBackup(pdHost, metadata, clusterID)
