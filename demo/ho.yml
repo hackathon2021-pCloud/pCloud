@@ -1,0 +1,31 @@
+# # Global variables are applied to all deployments and used as the default value of
+# # the deployments if a specific deployment value is missing.
+global:
+  user: "tidb"
+  ssh_port: 22
+  deploy_dir: "/home/tidb/tidb-deploy/log-restore2"
+  data_dir: "/home/tidb/tidb-data/log-restore2"
+
+# # Monitored variables are applied to all the machines.
+monitored:
+  node_exporter_port: 19101
+  blackbox_exporter_port: 19116
+
+server_configs:
+  tidb:
+    log.slow-threshold: 300
+
+pd_servers:
+  - host: 127.0.0.1
+    client_port: 2377
+    peer_port: 2382
+
+tidb_servers:
+  - host: 127.0.0.1
+    port: 4002
+    status_port: 10082
+
+tikv_servers:
+  - host: 127.0.0.1
+    port: 20162
+    status_port: 20182
