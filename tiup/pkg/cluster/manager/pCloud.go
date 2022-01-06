@@ -171,6 +171,18 @@ func authKeyForCluster(name string) string {
 	return sha
 }
 
+func (m *Manager) GetPCloudClusterID(name string) (string, error) {
+	clusterFile := path.Join(cloudDir, authKeyForCluster(name), "cloudFile")
+	clusterID, err := os.ReadFile(clusterFile)
+	if os.IsNotExist(err) {
+		return "", errors.Errorf("the cluster %s hasn't been registered to pCloud")
+	}
+	if err != nil {
+		return "", err
+	}
+	return string(clusterID), nil
+}
+
 // TODO: interface for making checkpoint
 // TODO: restore from checkpoint
 func (m *Manager) SetCheckpoint(name string, skipConfirm bool) error {
@@ -178,8 +190,7 @@ func (m *Manager) SetCheckpoint(name string, skipConfirm bool) error {
 	if err := multierr.Append(info.AssertCDCExists(), info.AssertPDExists()); err != nil {
 		return err
 	}
-	clusterFile := path.Join(cloudDir, authKeyForCluster(name), "cloudFile")
-	clusterID, err := os.ReadFile(clusterFile)
+	clusterID, err := m.GetPCloudClusterID(name)
 	if err != nil {
 		return err
 	}
@@ -327,13 +338,14 @@ func (m *Manager) Backup2Cloud(name string, opt operator.Options) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println(color.GreenString("Starting upload.."))
-		err = m.DoBackup(info, clusterID)
+		fmt.Println(color.GreenString("Starting streaming.."))
+		err = m.StartsIncrementalBackup(info.PDAddr[0], info.Meta, clusterID)
 		if err != nil {
 			return err
 		}
-		fmt.Println(color.GreenString("Starting streaming.."))
-		err = m.StartsIncrementalBackup(info.PDAddr[0], info.Meta, clusterID)
+
+		fmt.Println(color.GreenString("Starting upload.."))
+		err = m.DoBackup(info, clusterID)
 		if err != nil {
 			return err
 		}
@@ -379,8 +391,7 @@ func (m *Manager) RestoreFromCloud(name string) error {
 	if err := info.AssertPDExists(); err != nil {
 		return err
 	}
-	clusterFile := path.Join(cloudDir, authKeyForCluster(name), "cloudFile")
-	clusterID, err := os.ReadFile(clusterFile)
+	clusterID, err := m.GetPCloudClusterID(name)
 	if err != nil {
 		return err
 	}
