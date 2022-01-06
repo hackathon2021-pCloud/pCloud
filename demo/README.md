@@ -22,6 +22,12 @@
 #### 4.1 为这个集群灌入测试数据
     tiup bench tpcc prepare --warehouses 10 --db tpcc --threads 8 -P 4001
 
+### 注意
+*使用上云功能和恢复功能, 需要 s3 权限, 可以通过环境变量的方式进行设置*
+
+    export ACCESS_KEY={ACCESS_KEY}
+    export SECRET_ACCESS_KEY={SECRET_ACCESS_KEY}
+
 #### 4.2 为这个集群开启 PiTR 上云功能
     tiup cluster cloud hi backup
 后续根据提示完成操作
@@ -30,14 +36,10 @@
     tiup cluster cloud ho v5.3.0 ho.yml -y -p
     tiup cluster start ho
 
-#### 6. 停止写入
+#### 6. 停止写入(为了方便数据比对)
 
 #### 7. 为新集群开启恢复
     tiup cluster cloud ho restore {TOKEN}
 {TOKEN} 是备份时候生成的跟集群一一对应的字符串。
 
 #### 8. 检查两套集群数据是否一致
-
- 
-
-
