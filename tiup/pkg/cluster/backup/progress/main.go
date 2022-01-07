@@ -37,7 +37,6 @@ func main() {
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch)
 		for c := range ch {
-			log.Info("Get signal, ignoring.", zap.Stringer("sig", c))
 			if c == syscall.SIGTERM {
 				log.Info("Stoping...", zap.Stringer("sig", c))
 				os.Exit(0)
