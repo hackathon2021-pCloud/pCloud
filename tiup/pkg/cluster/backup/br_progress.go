@@ -123,5 +123,6 @@ func StartTracerProcess(stdin io.Reader, binary, clusterID, authKey, backupPath 
 	c.Stdin = stdin
 	c.Stdout = os.Stdout
 	c.Start()
+	c.Process.Release()
 	return c
 }
