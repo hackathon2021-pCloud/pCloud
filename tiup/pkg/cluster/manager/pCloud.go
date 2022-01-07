@@ -89,8 +89,7 @@ func (m *Manager) DoBackup(info ClusterInfo, us string) error {
 	if err := cmd.Process.Release(); err != nil {
 		return errors.New("failed to release BR")
 	}
-	backup.StartTracerProcess(out, "bin/br-progtracer", us, authKeyForCluster(info.Name), backupURL)
-	return nil
+	return backup.StartTracerProcess(out, "bin/br-progtracer", us, authKeyForCluster(info.Name), backupURL)
 }
 
 func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string) error {
