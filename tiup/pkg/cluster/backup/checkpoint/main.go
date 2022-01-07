@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/pingcap/tiup/pkg/cluster/api"
 	"github.com/spf13/pflag"
 )
@@ -28,7 +30,7 @@ func run(ctx context.Context, timer <-chan time.Time) error {
 			if clusterInfo.Cluster.SetupStatus != "finish" {
 				continue
 			}
-			api.CreateCheckpoint(api.CreateCheckpointRequest{
+			cp, err := api.CreateCheckpoint(api.CreateCheckpointRequest{
 				AuthKey:        *authKey,
 				ClusterID:      *cluster,
 				UploadStatus:   "finish",
@@ -41,6 +43,10 @@ func run(ctx context.Context, timer <-chan time.Time) error {
 				BackupSize: 42,
 				Operator:   "pingcap",
 			})
+			if err != nil {
+				return err
+			}
+			fmt.Println(color.GreenString("Checkpoint %s created."), cp)
 		}
 	}
 }

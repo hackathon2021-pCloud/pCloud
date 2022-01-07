@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/fatih/color"
@@ -166,7 +167,7 @@ type ClusterInfo struct {
 
 func GetCluster(clusterID string, authKey string) (ClusterInfo, error) {
 	clusterInfo := ClusterInfo{}
-	if err := RunGET(fmt.Sprintf("%s?authKey=%s&clusterId=%s", API("cluster"), clusterID, authKey), &clusterInfo); err != nil {
+	if err := RunGET(fmt.Sprintf("%s?authKey=%s&clusterId=%s", API("cluster"), url.QueryEscape(clusterID), url.QueryEscape(authKey)), &clusterInfo); err != nil {
 		return ClusterInfo{}, err
 	}
 	return clusterInfo, nil
