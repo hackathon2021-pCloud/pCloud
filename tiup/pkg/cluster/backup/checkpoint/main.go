@@ -46,7 +46,7 @@ func run(ctx context.Context, timer <-chan time.Time) error {
 			if err != nil {
 				return err
 			}
-			fmt.Println(color.GreenString("Checkpoint %s created."), cp)
+			fmt.Println(color.GreenString("Checkpoint %s created.", cp))
 		}
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
 
 	"github.com/pingcap/tiup/pkg/utils"
 )
@@ -32,6 +33,16 @@ func NewBackup(pdAddr string) *BRBuilder {
 
 func (builder *BRBuilder) Storage(s string) {
 	*builder = append(*builder, "-s", s)
+}
+
+// TimeRange spec a time range (present in unix mills)
+func (builder *BRBuilder) TimeRange(start, end uint) {
+	if start != 0 {
+		*builder = append(*builder, "--start-ts", strconv.FormatUint(uint64(start<<18), 10))
+	}
+	if end != 0 {
+		*builder = append(*builder, "--end-ts", strconv.FormatUint(uint64(end<<18), 10))
+	}
 }
 
 func (builder *BRBuilder) Build() []string {

@@ -117,7 +117,7 @@ func (m *Manager) DoBackup(info ClusterInfo, us string) error {
 		m.RunCheckpointDaemon(&info))
 }
 
-func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string) error {
+func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string, toTS uint) error {
 	env := environment.GlobalEnv()
 
 	ver, err := env.DownloadComponentIfMissing("br", utils.Version(metadata.GetBaseMeta().Version))
@@ -144,6 +144,7 @@ func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string) er
 	// Do log restore
 	builder = backup.NewLogRestore(pdAddr)
 	builder.Storage(m.getS3Address(us, "inc"))
+	builder.TimeRange(0, toTS)
 	b = backup.BR{Path: br, Version: ver}
 	fmt.Println(color.GreenString("start incremental downloading..."))
 	return b.Execute(context.TODO(), *builder...).Handle.Wait()
@@ -433,5 +434,5 @@ func (m *Manager) RestoreFromCloud(name string, predefined string) error {
 	if !ok {
 		return nil
 	}
-	return m.DoRestore(info.PDAddr[0], info.Meta, cp.ClusterID)
+	return m.DoRestore(info.PDAddr[0], info.Meta, cp.ClusterID, uint(cp.CheckpointTime))
 }
