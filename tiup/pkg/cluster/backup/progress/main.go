@@ -18,6 +18,7 @@ var (
 )
 
 func main() {
+	pflag.Parse()
 	trace := backup.TraceByLog(os.Stdin)
 	endro := make(chan struct{})
 	closeOnce := new(sync.Once)
