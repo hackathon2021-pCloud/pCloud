@@ -10,11 +10,9 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/pingcap/log"
 	"github.com/pingcap/tiup/pkg/cluster/api"
 	"github.com/pingcap/tiup/pkg/cluster/backup"
 	"github.com/spf13/pflag"
-	"go.uber.org/zap"
 )
 
 var (
@@ -26,19 +24,11 @@ var (
 
 func main() {
 	pflag.Parse()
-	log.InitLogger(&log.Config{
-		File: log.FileLogConfig{
-			Filename: *logFile,
-		},
-		Level: "info",
-	})
-	log.Info("Welcome to BR Progress Tracer")
 	go func() {
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch)
 		for c := range ch {
 			if c == syscall.SIGTERM {
-				log.Info("Stoping...", zap.Stringer("sig", c))
 				os.Exit(0)
 			}
 		}
@@ -54,7 +44,6 @@ func main() {
 			BackupURL: *backupURL,
 		}); err != nil {
 			fmt.Println("failed to upload progress", color.RedString("%s", err))
-			log.Error("failed to upload progress", zap.Error(err))
 		}
 		if progress.Precent >= 1 {
 			closeOnce.Do(func() {
