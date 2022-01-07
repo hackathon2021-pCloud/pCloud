@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"os/user"
 	"path"
 	"path/filepath"
@@ -43,11 +44,34 @@ import (
 )
 
 const (
-	mockS3     = "s3://tmp/br-restore/%s/%s?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http://minio.pingcap.net:9000&force-path-style=true"
-	localMinio = "s3://brie/%s/%s?endpoint=http://192.168.56.102:9000"
-	s3Address  = "s3://pcloud2021/backups/%s/%s?access-key=%s&secret-access-key=%s&force-path-style=true&region=us-west-2"
-	cloudDir   = "/tmp/cloud"
+	mockS3         = "s3://tmp/br-restore/%s/%s?access-key=minioadmin&secret-access-key=minioadmin&endpoint=http://minio.pingcap.net:9000&force-path-style=true"
+	localMinio     = "s3://brie/%s/%s?endpoint=http://192.168.56.102:9000"
+	s3AddressNoArg = "s3://pcloud2021/backups/%s/%s"
+	s3Address      = "s3://pcloud2021/backups/%s/%s?access-key=%s&secret-access-key=%s&force-path-style=true&region=us-west-2"
+	cloudDir       = "/tmp/cloud"
 )
+
+func (m *Manager) RunCheckpointDaemon(info *ClusterInfo) error {
+	clusterID, err := m.GetPCloudClusterID(info.Name)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command("bin/checkpoint-daemon",
+		"--cluster-id",
+		clusterID,
+		"--auth-key",
+		authKeyForCluster(info.Name),
+		"--url",
+		fmt.Sprintf(s3AddressNoArg, clusterID, "incr"),
+	)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	if err := cmd.Process.Release(); err != nil {
+		return err
+	}
+	return nil
+}
 
 func (m *Manager) getAccessKey() string {
 	return os.Getenv("ACCESS_KEY")
@@ -89,7 +113,8 @@ func (m *Manager) DoBackup(info ClusterInfo, us string) error {
 	if err := cmd.Process.Release(); err != nil {
 		return errors.New("failed to release BR")
 	}
-	return backup.StartTracerProcess(out, "bin/br-progtracer", us, authKeyForCluster(info.Name), backupURL)
+	return multierr.Append(backup.StartTracerProcess(out, "bin/br-progtracer", us, authKeyForCluster(info.Name), backupURL),
+		m.RunCheckpointDaemon(&info))
 }
 
 func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string) error {
@@ -377,7 +402,7 @@ func (m *Manager) SaveToFile(file string, content string) error {
 }
 
 // RestoreFromCloud start a full backup and log backup from cloud.
-func (m *Manager) RestoreFromCloud(name string) error {
+func (m *Manager) RestoreFromCloud(name string, predefined string) error {
 	if err := clusterutil.ValidateClusterNameOrError(name); err != nil {
 		return err
 	}

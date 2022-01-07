@@ -151,3 +151,23 @@ func GetCheckpoint(checkpoint string) (*Checkpoint, error) {
 	}
 	return &resp.Checkpoint, nil
 }
+
+type ClusterInfo struct {
+	Cluster struct {
+		SetupStatus        string      `json:"setupStatus"`
+		ID                 string      `json:"id"`
+		CreateTime         string      `json:"createTime"`
+		StorageProvider    string      `json:"storageProvider"`
+		Name               string      `json:"name"`
+		LaskCheckpointTime interface{} `json:"laskCheckpointTime"`
+		BackupSize         interface{} `json:"backupSize"`
+	} `json:"cluster"`
+}
+
+func GetCluster(clusterID string, authKey string) (ClusterInfo, error) {
+	clusterInfo := ClusterInfo{}
+	if err := RunGET(fmt.Sprintf("%s?authKey=%s&clusterId=%s", API("cluster"), clusterID, authKey), &clusterInfo); err != nil {
+		return ClusterInfo{}, err
+	}
+	return clusterInfo, nil
+}

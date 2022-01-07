@@ -3,7 +3,6 @@ package backup
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -50,8 +49,7 @@ func (br *BR) Execute(ctx context.Context, args ...string) BRProcess {
 	tr := TraceByLog(r)
 	cmd.Stdout = w
 	cmd.Stderr = os.Stderr
-	cmd.Env = []string{"AWS_ACCESS_KEY=root", "AWS_SECRET_KEY=a123456;", "BR_LOG_TO_TERM=1"}
-	fmt.Println("executing ", args)
+	cmd.Env = []string{"BR_LOG_TO_TERM=1"}
 	cmd.Start()
 	return BRProcess{
 		Handle: cmd,
