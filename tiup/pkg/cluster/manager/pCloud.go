@@ -416,11 +416,7 @@ func (m *Manager) RestoreFromCloud(name string, predefined string) error {
 	if err := info.AssertPDExists(); err != nil {
 		return err
 	}
-	clusterID, err := m.GetPCloudClusterID(name)
-	if err != nil {
-		return err
-	}
-	fmt.Println("Hint: you can generate a checkpoint from", color.YellowString("%s/cluster?id=%s", api.HOST, clusterID))
+	fmt.Println("Hint: you can generate a checkpoint from", color.YellowString("%s", api.HOST))
 	token := tui.Prompt("Please input the checkpoint token generated:")
 
 	// TODO use the token to restore to the checkpoint.
