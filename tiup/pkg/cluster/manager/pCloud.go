@@ -78,11 +78,12 @@ func (m *Manager) DoBackup(info ClusterInfo, us string) error {
 	builder.Storage(backupURL)
 	b := backup.BR{Path: br, Version: ver}
 	cmd := b.CreateCmd(context.TODO(), *builder...)
-	cmd.Start()
 	out, err := cmd.StdoutPipe()
+
 	if err != nil {
 		return err
 	}
+	cmd.Start()
 	backup.StartTracerProcess(out, "bin/br-progtracer", us, authKeyForCluster(info.Name), backupURL)
 	return nil
 }
