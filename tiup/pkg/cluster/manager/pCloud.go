@@ -33,6 +33,7 @@ import (
 
 	"github.com/pingcap/tiup/pkg/cluster/api"
 	"github.com/pingcap/tiup/pkg/tui"
+	"github.com/pingcap/tiup/pkg/tui/progress"
 
 	"github.com/pingcap/errors"
 	"github.com/pingcap/tiup/pkg/cluster/backup"
@@ -134,14 +135,28 @@ func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string, to
 	b := backup.BR{Path: br, Version: ver}
 	fmt.Println(color.GreenString("start downloading..."))
 	cmd := b.Execute(context.TODO(), *builder...)
-	cmd.Trace.OnProgress(func(progress backup.Progress) {
-		fmt.Println(color.HiGreenString("%+v", progress))
+	bar := progress.NewSingleBar("restore baseline")
+	bar.StartRenderLoop()
+	cmd.Trace.OnProgress(func(pg backup.Progress) {
+		if pg.Precent >= 1 {
+			bar.UpdateDisplay(&progress.DisplayProps{
+				Prefix: "restore baseline",
+				Mode:   progress.ModeDone,
+			})
+			return
+		}
+		bar.UpdateDisplay(&progress.DisplayProps{
+			Prefix: "restore baseline",
+			Suffix: fmt.Sprintf("%.2f%%", pg.Precent*100),
+			Mode:   progress.ModeProgress,
+		})
 	})
 
 	if err := cmd.Handle.Wait(); err != nil {
 		return err
 	}
 	// Do log restore
+	bar.StopRenderLoop()
 	builder = backup.NewLogRestore(pdAddr)
 	builder.Storage(m.getS3Address(us, "inc"))
 	builder.TimeRange(0, toTS)
