@@ -23,12 +23,6 @@ func main() {
 	endro := make(chan struct{})
 	closeOnce := new(sync.Once)
 	trace.OnProgress(func(progress backup.Progress) {
-		if progress.Precent >= 1 {
-			closeOnce.Do(func() {
-				close(endro)
-				trace.Stop()
-			})
-		}
 		if err := api.CreateProgress(api.CreateProgressRequest{
 			ClusterID: *cluster,
 			AuthKey:   *authKey,
@@ -36,6 +30,12 @@ func main() {
 			BackupURL: *backupURL,
 		}); err != nil {
 			fmt.Println("failed to upload progress", color.RedString("%s", err))
+		}
+		if progress.Precent >= 1 {
+			closeOnce.Do(func() {
+				close(endro)
+				trace.Stop()
+			})
 		}
 	})
 	trace.Init()
