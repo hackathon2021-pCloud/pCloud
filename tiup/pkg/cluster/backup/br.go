@@ -78,6 +78,13 @@ func (br *BR) CreateCmd(ctx context.Context, args ...string) *exec.Cmd {
 
 func (br *BRProcess) WaitAndPrintProgress(prefix string) error {
 	bar := progress.NewSingleBar(prefix)
+	defer func() {
+		bar.UpdateDisplay(&progress.DisplayProps{
+			Prefix: prefix,
+			Mode:   progress.ModeDone,
+		})
+		bar.StopRenderLoop()
+	}()
 	bar.UpdateDisplay(&progress.DisplayProps{
 		Prefix: prefix,
 		Mode:   progress.ModeProgress,
@@ -102,8 +109,6 @@ func (br *BRProcess) WaitAndPrintProgress(prefix string) error {
 	if err := br.Handle.Wait(); err != nil {
 		return err
 	}
-	// Do log restore
-	bar.StopRenderLoop()
 	return nil
 }
 
