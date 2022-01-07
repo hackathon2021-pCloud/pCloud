@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"path"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/fatih/color"
@@ -29,13 +30,19 @@ func main() {
 		File: log.FileLogConfig{
 			Filename: *logFile,
 		},
+		Level: "info",
 	})
+	log.Info("Welcome to BR Progress Tracer")
 	go func() {
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch)
-		c := <-ch
-		log.Info("Get signal to exit.", zap.Stringer("sig", c))
-		os.Exit(0)
+		for c := range ch {
+			log.Info("Get signal, ignoring.", zap.Stringer("sig", c))
+			if c == syscall.SIGTERM {
+				log.Info("Stoping...", zap.Stringer("sig", c))
+				os.Exit(0)
+			}
+		}
 	}()
 	trace := backup.TraceByLog(os.Stdin)
 	endro := make(chan struct{})
