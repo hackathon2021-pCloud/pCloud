@@ -59,6 +59,12 @@ func (br *BR) Execute(ctx context.Context, args ...string) BRProcess {
 	}
 }
 
+func (br *BR) CreateCmd(ctx context.Context, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, br.Path, args...)
+	cmd.Env = []string{"BR_LOG_TO_TERM=1"}
+	return cmd
+}
+
 type CdcCtl struct {
 	changeFeedId string
 	Path         string

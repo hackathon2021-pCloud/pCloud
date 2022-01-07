@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"encoding/json"
 	"io"
+	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -114,4 +116,12 @@ func (lt *LogProgressTracer) Stop() error {
 
 func (lt *LogProgressTracer) OnProgress(f func(progress Progress)) {
 	lt.subscriptions = append(lt.subscriptions, f)
+}
+
+func StartTracerProcess(stdin io.Reader, binary, clusterID, authKey, backupPath string) *exec.Cmd {
+	c := exec.Command(binary, "--cluster-id", clusterID, "--auth-key", authKey, "--url", backupPath)
+	c.Stdin = stdin
+	c.Stdout = os.Stdout
+	c.Start()
+	return c
 }

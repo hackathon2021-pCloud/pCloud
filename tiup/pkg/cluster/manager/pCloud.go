@@ -77,20 +77,14 @@ func (m *Manager) DoBackup(info ClusterInfo, us string) error {
 	backupURL := m.getS3Address(us, "full")
 	builder.Storage(backupURL)
 	b := backup.BR{Path: br, Version: ver}
-	proc := b.Execute(context.TODO(), *builder...)
-	proc.Trace.OnProgress(func(progress backup.Progress) {
-		fmt.Println("Your progress: ", color.BlueString("%.2f%%", progress.Precent*100))
-		if err := api.CreateProgress(api.CreateProgressRequest{
-			ClusterID: us,
-			AuthKey:   authKeyForCluster(info.Name),
-			Progress:  int(progress.Precent * 100),
-			BackupURL: backupURL,
-		}); err != nil {
-			fmt.Println("failed to upload progress", color.RedString("%s", err))
-		}
-	})
-	proc.Trace.Init()
-	return proc.Handle.Wait()
+	cmd := b.CreateCmd(context.TODO(), *builder...)
+	cmd.Start()
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	backup.StartTracerProcess(out, "bin/br-progtracer", us, authKeyForCluster(info.Name), backupURL)
+	return nil
 }
 
 func (m *Manager) DoRestore(pdAddr string, metadata spec.Metadata, us string) error {
