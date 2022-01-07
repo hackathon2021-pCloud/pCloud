@@ -167,7 +167,7 @@ type ClusterInfo struct {
 
 func GetCluster(clusterID string, authKey string) (ClusterInfo, error) {
 	clusterInfo := ClusterInfo{}
-	if err := RunGET(fmt.Sprintf("%s?authKey=%s&clusterId=%s", API("cluster"), url.QueryEscape(clusterID), url.QueryEscape(authKey)), &clusterInfo); err != nil {
+	if err := RunGET(fmt.Sprintf("%s?authKey=%s&clusterId=%s", API("cluster"), url.QueryEscape(authKey), url.QueryEscape(clusterID)), &clusterInfo); err != nil {
 		return ClusterInfo{}, err
 	}
 	return clusterInfo, nil
