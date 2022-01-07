@@ -118,11 +118,16 @@ func (lt *LogProgressTracer) OnProgress(f func(progress Progress)) {
 	lt.subscriptions = append(lt.subscriptions, f)
 }
 
-func StartTracerProcess(stdin io.Reader, binary, clusterID, authKey, backupPath string) *exec.Cmd {
+func StartTracerProcess(stdin io.Reader, binary, clusterID, authKey, backupPath string) error {
 	c := exec.Command(binary, "--cluster-id", clusterID, "--auth-key", authKey, "--url", backupPath)
 	c.Stdin = stdin
 	c.Stdout = os.Stdout
-	c.Start()
-	c.Process.Release()
-	return c
+	c.Stderr = os.Stderr
+	if err := c.Start(); err != nil {
+		return err
+	}
+	if err := c.Process.Release(); err != nil {
+		return err
+	}
+	return nil
 }
