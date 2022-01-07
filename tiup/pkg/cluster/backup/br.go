@@ -3,11 +3,13 @@ package backup
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"strconv"
 
+	"github.com/pingcap/tiup/pkg/tui/progress"
 	"github.com/pingcap/tiup/pkg/utils"
 )
 
@@ -72,6 +74,37 @@ func (br *BR) CreateCmd(ctx context.Context, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, br.Path, args...)
 	cmd.Env = []string{"BR_LOG_TO_TERM=1"}
 	return cmd
+}
+
+func (br *BRProcess) WaitAndPrintProgress(prefix string) error {
+	bar := progress.NewSingleBar(prefix)
+	bar.UpdateDisplay(&progress.DisplayProps{
+		Prefix: prefix,
+		Mode:   progress.ModeProgress,
+		Suffix: "00.00%",
+	})
+	bar.StartRenderLoop()
+	br.Trace.OnProgress(func(pg Progress) {
+		if pg.Precent >= 1 {
+			bar.UpdateDisplay(&progress.DisplayProps{
+				Prefix: prefix,
+				Mode:   progress.ModeDone,
+			})
+			return
+		}
+		bar.UpdateDisplay(&progress.DisplayProps{
+			Prefix: prefix,
+			Suffix: fmt.Sprintf("%02.2f%%", pg.Precent*100),
+			Mode:   progress.ModeProgress,
+		})
+	})
+
+	if err := br.Handle.Wait(); err != nil {
+		return err
+	}
+	// Do log restore
+	bar.StopRenderLoop()
+	return nil
 }
 
 type CdcCtl struct {
