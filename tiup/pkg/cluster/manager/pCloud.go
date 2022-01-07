@@ -88,7 +88,7 @@ func (m *Manager) DoBackup(info ClusterInfo, us string) error {
 	if err := cmd.Process.Release(); err != nil {
 		return errors.New("failed to release BR")
 	}
-	fmt.Println("Started BR with PID:", color.GreenString("%d", cmd.ProcessState.Pid()))
+	fmt.Println("Started BR with PID:", color.GreenString("%d", cmd.Process.Pid))
 	backup.StartTracerProcess(out, "bin/br-progtracer", us, authKeyForCluster(info.Name), backupURL)
 	return nil
 }
