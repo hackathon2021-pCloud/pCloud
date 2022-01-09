@@ -42,12 +42,17 @@ func newCloudCmd() *cobra.Command {
 
 			operation := args[1]
 			switch operation {
+			case "snapshot", "checkpoint", "mkcp", "make-checkpoint":
+				return cm.SetCheckpoint(clusterName, skipConfirm)
 			case "backup":
 				return cm.Backup2Cloud(clusterName, gOpt)
 			case "restore":
 				// TODO get us from service
-				us := args[2]
-				return cm.RestoreFromCloud(clusterName, us, gOpt)
+				predefined := ""
+				if len(args) > 2 {
+					predefined = args[2]
+				}
+				return cm.RestoreFromCloud(clusterName, predefined)
 			default:
 				return perrs.Errorf("Cloud cmd %s not support", operation)
 			}

@@ -7,7 +7,9 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
 
+	"github.com/pingcap/tiup/pkg/tui/progress"
 	"github.com/pingcap/tiup/pkg/utils"
 )
 
@@ -35,6 +37,16 @@ func (builder *BRBuilder) Storage(s string) {
 	*builder = append(*builder, "-s", s)
 }
 
+// TimeRange spec a time range (present in unix mills)
+func (builder *BRBuilder) TimeRange(start, end uint) {
+	if start != 0 {
+		*builder = append(*builder, "--start-ts", strconv.FormatUint(uint64(start<<18), 10))
+	}
+	if end != 0 {
+		*builder = append(*builder, "--end-ts", strconv.FormatUint(uint64(end<<18), 10))
+	}
+}
+
 func (builder *BRBuilder) Build() []string {
 	return *builder
 }
@@ -50,13 +62,54 @@ func (br *BR) Execute(ctx context.Context, args ...string) BRProcess {
 	tr := TraceByLog(r)
 	cmd.Stdout = w
 	cmd.Stderr = os.Stderr
-	cmd.Env = []string{"AWS_ACCESS_KEY=root", "AWS_SECRET_KEY=a123456;", "BR_LOG_TO_TERM=1"}
-	fmt.Println("executing ", args)
+	cmd.Env = []string{"BR_LOG_TO_TERM=1"}
 	cmd.Start()
 	return BRProcess{
 		Handle: cmd,
 		Trace:  tr,
 	}
+}
+
+func (br *BR) CreateCmd(ctx context.Context, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, br.Path, args...)
+	cmd.Env = []string{"BR_LOG_TO_TERM=1"}
+	return cmd
+}
+
+func (br *BRProcess) WaitAndPrintProgress(prefix string) error {
+	bar := progress.NewSingleBar(prefix)
+	defer func() {
+		bar.UpdateDisplay(&progress.DisplayProps{
+			Prefix: prefix,
+			Mode:   progress.ModeDone,
+		})
+		bar.StopRenderLoop()
+	}()
+	bar.UpdateDisplay(&progress.DisplayProps{
+		Prefix: prefix,
+		Mode:   progress.ModeProgress,
+		Suffix: "00.00%",
+	})
+	bar.StartRenderLoop()
+	br.Trace.OnProgress(func(pg Progress) {
+		if pg.Precent >= 1 {
+			bar.UpdateDisplay(&progress.DisplayProps{
+				Prefix: prefix,
+				Mode:   progress.ModeDone,
+			})
+			return
+		}
+		bar.UpdateDisplay(&progress.DisplayProps{
+			Prefix: prefix,
+			Suffix: fmt.Sprintf("%02.2f%%", pg.Precent*100),
+			Mode:   progress.ModeProgress,
+		})
+	})
+
+	if err := br.Handle.Wait(); err != nil {
+		return err
+	}
+	return nil
 }
 
 type CdcCtl struct {

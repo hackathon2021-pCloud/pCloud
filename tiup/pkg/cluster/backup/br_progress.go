@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"encoding/json"
 	"io"
+	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +23,7 @@ type Progress struct {
 type ProgressTracer interface {
 	OnProgress(func(progress Progress))
 	Stop() error
+	Init()
 }
 
 // LogProgressTracer traces progress of BR via the log.
@@ -35,6 +38,14 @@ func TraceByLog(logStream io.ReadCloser) ProgressTracer {
 	}
 	go lt.ReadLoop()
 	return lt
+}
+
+func (lt *LogProgressTracer) Init() {
+	go lt.SendProgress(&Progress{
+		RecordAt: time.Now(),
+		// Emm... The progress cannot be zero or we would fail to upload the status.
+		Precent: 0.01,
+	})
 }
 
 type BRProgress struct {
@@ -60,7 +71,8 @@ func (prog *BRProgress) ToProgress() *Progress {
 		log.Warnf("failed to parse date (err = %s)", err)
 		return nil
 	}
-	if prog.Step == "Checksum" {
+	// MAGIC: backup contains a checksum step.
+	if prog.Step == "Checksum" || strings.Contains(strings.ToLower(prog.Step), "restore") {
 		result.Precent /= 100.0
 	} else {
 		result.Precent /= 200.0
@@ -104,4 +116,18 @@ func (lt *LogProgressTracer) Stop() error {
 
 func (lt *LogProgressTracer) OnProgress(f func(progress Progress)) {
 	lt.subscriptions = append(lt.subscriptions, f)
+}
+
+func StartTracerProcess(stdin io.Reader, binary, clusterID, authKey, backupPath string) error {
+	c := exec.Command(binary, "--cluster-id", clusterID, "--auth-key", authKey, "--url", backupPath)
+	c.Stdin = stdin
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	if err := c.Start(); err != nil {
+		return err
+	}
+	if err := c.Process.Release(); err != nil {
+		return err
+	}
+	return nil
 }
