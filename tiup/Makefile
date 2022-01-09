@@ -64,6 +64,8 @@ client:
 cluster:
 	@# Target: build the tiup-cluster component
 	$(GOBUILD) -ldflags '$(LDFLAGS)' -o bin/tiup-cluster ./components/cluster
+	$(GOBUILD) -o bin/checkpoint-daemon pkg/cluster/backup/checkpoint/main.go
+	$(GOBUILD) -o bin/br-progtracer pkg/cluster/backup/progress/main.go
 
 dm:
 	@# Target: build the tiup-dm component

@@ -1,0 +1,5 @@
+Usage of bin/checkpoint-daemon:
+      --auth-key string                the authkey of your account
+      --checkpoint-interval duration   the interval of creating checkpoints (default 1m0s)
+      --cluster-id string              the cluster for updating
+      --url string                     the url (default "s3://pcloud2021/backups")

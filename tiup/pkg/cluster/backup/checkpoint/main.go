@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"syscall"
 	"time"
 
 	"github.com/fatih/color"
@@ -51,8 +53,26 @@ func run(ctx context.Context, timer <-chan time.Time) error {
 	}
 }
 
+func redirect(file string) error {
+	if err := syscall.Close(1); err != nil {
+		return err
+	}
+	fd, err := syscall.Open(file, syscall.O_APPEND|syscall.O_RDONLY, 0755)
+	if err != nil {
+		return err
+	}
+	if fd != 1 {
+		return errors.New("failed to redirect stdout")
+	}
+	return nil
+}
+
 func main() {
 	pflag.Parse()
+	if err := redirect("./log.txt"); err != nil {
+		panic(err)
+	}
+	fmt.Println("welcome to the hacky checkpoint uploader.")
 	tick := time.NewTicker(*checkpointInterval)
 	if err := run(context.Background(), tick.C); err != nil {
 		panic(err)
